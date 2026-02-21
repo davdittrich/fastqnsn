@@ -15,7 +15,8 @@
 ## Installation
 ```R
 # Requires Rcpp, RcppParallel, and a C++ compiler
-remotes::install_local("fastqnsn")
+# install.packages("remotes")
+remotes::install_github("davdittrich/fastqnsn")
 ```
 
 ## Usage
