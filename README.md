@@ -44,7 +44,6 @@ Results from comparison with `robustbase` (median execution time):
 
 ## Authors
 **Dennis Alexis Valin Dittrich** (ORCID: 0000-0002-4438-8276)  
-Email: [davd@economicscience.net](mailto:davd@economicscience.net)
 
 ## References
 - Rousseeuw, P. J., & Croux, C. (1993). Alternatives to the Median Absolute Deviation. *JASA*.
