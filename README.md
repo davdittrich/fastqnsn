@@ -1,5 +1,7 @@
 # fastqnsn
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18727053.svg)](https://doi.org/10.5281/zenodo.18727053)
+
 `fastqnsn` is a high-performance R package for computing the **Rousseeuw-Croux $Q_n$ and $S_n$** robust scale estimators. It is designed to provide peak performance across all sample sizes while maintaining superior numerical accuracy compared to legacy implementations.
 
 ## Key Features

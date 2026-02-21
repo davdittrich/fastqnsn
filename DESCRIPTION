@@ -15,3 +15,4 @@ Imports: Rcpp (>= 1.0.0), RcppParallel (>= 5.0.0)
 LinkingTo: Rcpp, RcppParallel
 SystemRequirements: TBB (Intel Threading Building Blocks)
 RoxygenNote: 7.3.3
+Config/zenodo/doi: 10.5281/zenodo.18727053
