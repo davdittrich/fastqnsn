@@ -1,2 +1,11 @@
-PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -I.
 PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) `"${R_HOME}/bin/Rscript" -e "RcppParallel::RcppParallelLibs()"`
+
+OBJECTS = estimators.o kernels.o RcppExports.o
+
+all: $(SHLIB)
+
+kernels.o: kernels.zig
+	zig build-obj -fPIC -O ReleaseFast kernels.zig -femit-bin=kernels.o
+
+.PHONY: all

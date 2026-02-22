@@ -1,0 +1,19 @@
+Welcome back dd!
+Working directory is: /home/dd/Gemini/qnsn/fastqnsn
+* installing to library ‘/home/dd/Gemini/qnsn/fastqnsn/old_lib’
+* installing *source* package ‘fastqnsn’ ...
+** this is package ‘fastqnsn’ version ‘0.1.0’
+** using staged installation
+** libs
+using C++ compiler: ‘g++ (GCC) 15.2.1 20260209’
+g++ -std=gnu++17 -I"/usr/include/R/" -DNDEBUG  -I'/home/dd/R/x86_64-pc-linux-gnu-library/4.5/Rcpp/include' -I'/home/dd/R/x86_64-pc-linux-gnu-library/4.5/RcppParallel/include' -I/usr/local/include   -fopenmp -I. -fpic  -O3 -Wall -pedantic -march=native -mtune=native -pipe -Wno-ignored-attributes -fopenmp  -c estimators.cpp -o estimators.o
+zig build-obj -fPIC -O ReleaseFast kernels.zig -femit-bin=kernels.o
+g++ -std=gnu++17 -I"/usr/include/R/" -DNDEBUG  -I'/home/dd/R/x86_64-pc-linux-gnu-library/4.5/Rcpp/include' -I'/home/dd/R/x86_64-pc-linux-gnu-library/4.5/RcppParallel/include' -I/usr/local/include   -fopenmp -I. -fpic  -O3 -Wall -pedantic -march=native -mtune=native -pipe -Wno-ignored-attributes -fopenmp  -c RcppExports.cpp -o RcppExports.o
+kernels.zig:7:11: error: unused local constant
+    const x = x_ptr[0..n];
+          ^
+make: *** [Makevars:9: kernels.o] Error 1
+make: *** Waiting for unfinished jobs....
+ERROR: compilation failed for package ‘fastqnsn’
+* removing ‘/home/dd/Gemini/qnsn/fastqnsn/old_lib/fastqnsn’
+* restoring previous ‘/home/dd/Gemini/qnsn/fastqnsn/old_lib/fastqnsn’

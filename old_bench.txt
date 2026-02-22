@@ -1,0 +1,12 @@
+
+--- Benchmarking n = 50 ---
+Unit: microseconds
+       expr    min      lq     mean  median     uq     max neval cld
+ robustbase 13.515 13.6810 23.73915 14.2770 15.770 181.631    20   a
+   fastqnsn  5.320  5.5705 11.61775  5.7905  6.573 108.323    20   a
+Unit: microseconds
+       expr   min     lq     mean median    uq     max neval cld
+ robustbase 4.900 5.3200 12.48190  5.490 5.636 141.065    20   a
+   fastqnsn 2.114 2.2095  5.09305  2.389 2.605  53.982    20   a
+
+--- Benchmarking n = 2000 ---
