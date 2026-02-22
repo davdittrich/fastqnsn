@@ -1,5 +1,6 @@
-*.so
+.env
 *.o
-.Rproj.user
-.Rhistory
 .RData
+.Rhistory
+.Rproj.user
+*.so
