@@ -23,8 +23,8 @@ The Sn estimator is defined as:
 \deqn{S_n = c \cdot \text{lomed}_i \left\{ \text{himed}_j |x_i - x_j| \right\}}{Sn = c * lomed_i { himed_j |x_i - x_j| }}
 This implementation uses a fast hybrid architecture:
 \itemize{
-  \item For small samples (n < 50), a high-speed O(n^2) scalar engine is used.
-  \item For larger samples, a multi-threaded O(n log n) algorithm via RcppParallel is used.
+  \item For sample sizes n <= 2000, a high-speed deterministic Zig kernel is used.
+  \item For larger samples (n > 2000), a multi-threaded O(n log n) algorithm via RcppParallel is used.
 }
 It incorporates modern consistency constants and finite-sample bias correction factors
 as described by Akinshin (2022).
