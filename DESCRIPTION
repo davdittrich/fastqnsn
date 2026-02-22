@@ -1,7 +1,7 @@
 Package: fastqnsn
 Type: Package
 Title: Fast and Optimized Qn and Sn Robust Scale Estimators
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
     person("Dennis Alexis Valin", "Dittrich",
            role = c("aut", "cre"),

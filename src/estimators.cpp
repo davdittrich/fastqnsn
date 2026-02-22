@@ -15,9 +15,11 @@ using namespace RcppParallel;
 inline double lowmedian_ptr(double *arr, size_t n) {
   if (n == 0)
     return 0.0;
-  size_t m = (size_t)(std::floor(((double)n + 1.0) / 2.0) - 1.0);
-  std::nth_element(arr, arr + m, arr + n);
-  return arr[m];
+  // Lo-median of n elements is the ((n+1)/2)-th smallest.
+  // In 0-indexing, this is rank (n-1)/2.
+  size_t h = (n - 1) / 2;
+  std::nth_element(arr, arr + h, arr + n);
+  return arr[h];
 }
 
 // --- SN ESTIMATOR WORKER (LARGE N) ---
@@ -32,11 +34,7 @@ struct SnWorker : public Worker {
 
   void operator()(size_t begin, size_t end) {
     for (size_t i = begin; i < end; ++i) {
-      // S_n selection logic
-      // The kth element in { |x_i - x_j| } where j != i
-      // This is handled by zig_sn_select_k
-      size_t target_rank = (n - 1) / 2; // 0-indexed target rank for median
-      results[i] = zig_sn_select_k(sorted_x, n, i, target_rank + 1);
+      results[i] = zig_sn_deterministic(sorted_x, n, i);
     }
   }
 };
@@ -47,15 +45,7 @@ double C_sn_fast(NumericVector x) {
   if (n < 2)
     return NA_REAL;
 
-  // Direct access to R vector memory
   const double *x_ptr = x.begin();
-
-  if (n < 50) {
-    std::vector<double> inner_medians(n);
-    zig_sn_naive(x_ptr, n, inner_medians.data());
-    return lowmedian_ptr(inner_medians.data(), n);
-  }
-
   std::vector<double> sorted_x(n);
   std::copy(x_ptr, x_ptr + n, sorted_x.begin());
 
@@ -67,6 +57,7 @@ double C_sn_fast(NumericVector x) {
   std::vector<double> inner_medians(n);
   SnWorker worker(sorted_x.data(), n, inner_medians.data());
 
+  // Threshold tuning: only parallelize for N > 2000
   if (n > 2000)
     parallelFor(0, n, worker);
   else
@@ -77,47 +68,7 @@ double C_sn_fast(NumericVector x) {
 
 // --- QN ESTIMATOR HELPERS ---
 
-struct QnCounter : public Worker {
-  const double *sorted_x_ptr;
-  double trial;
-  size_t n;
-  long long sumP;
-
-  QnCounter(const double *sorted_x_ptr, double trial, size_t n)
-      : sorted_x_ptr(sorted_x_ptr), trial(trial), n(n), sumP(0) {}
-
-  QnCounter(const QnCounter &other, Split)
-      : sorted_x_ptr(other.sorted_x_ptr), trial(other.trial), n(other.n),
-        sumP(0) {}
-
-  void operator()(size_t begin, size_t end) {
-    // Since the Zig implementation is O(n) for the whole array,
-    // we can't easily split it into parallel segments while maintaining O(n).
-    // However, we can split the work by giving each worker a range of 'i'.
-    // But for Q_n, the sliding window is most efficient when done in one pass.
-    // Let's implement a thread-safe way or just use the O(n) Zig call on the
-    // whole array. Given that O(n) is extremely fast, serial execution of the
-    // counting might be fine unless n is very large. To keep it parallel, each
-    // worker will do a sub-segment.
-
-    uint64_t count = 0;
-    size_t j = 0;
-    // Adjust j to the start of the range 'begin'
-    while (j < begin && sorted_x_ptr[begin] - sorted_x_ptr[j] > trial) {
-      j++;
-    }
-
-    for (size_t i = begin; i < end; ++i) {
-      while (j < i && sorted_x_ptr[i] - sorted_x_ptr[j] > trial) {
-        j++;
-      }
-      count += (i - j);
-    }
-    sumP += count;
-  }
-
-  void join(const QnCounter &other) { sumP += other.sumP; }
-};
+// Qn refinement loop (Johnson-Mizoguchi) is now implemented in Zig.
 
 // For Qn refinement loop (whimed refinement)
 // This is now partially handled by Zig for efficiency and branchlessness.

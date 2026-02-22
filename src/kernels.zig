@@ -5,10 +5,10 @@ const std = @import("std");
 /// Results are written to out_ptr
 export fn zig_sn_naive(x_ptr: [*]const f64, n: usize, out_ptr: [*]f64) void {
     const out = out_ptr[0..n];
-    const target_rank = (n - 1) / 2;
+    const target_rank = n / 2 + 1;
 
     for (0..n) |i| {
-        out[i] = zig_sn_select_k(x_ptr, n, i, target_rank + 1);
+        out[i] = zig_sn_select_k(x_ptr, n, i, target_rank);
     }
 }
 
@@ -19,48 +19,40 @@ export fn zig_sn_select_k(x_ptr: [*]const f64, n: usize, i: usize, k: usize) f64
     const x = x_ptr[0..n];
     const val_i = x[i];
 
-    // Branchless binary search for the k-th smallest |x[i] - x[j]|
-    // Utilizing the property that |x[i] - x[j]| is unimodal (v-shaped) in j
     var low: f64 = 0.0;
     var high: f64 = @max(val_i - x[0], x[n - 1] - val_i);
 
     for (0..64) |_| {
         const mid = low + (high - low) / 2.0;
-        // Count pairs |x[i] - x[j]| <= mid
-        // This is equivalent to finding j range [L, R] such that x[j] is in [val_i - mid, val_i + mid]
-        var count: usize = 0;
-
-        // Binary search for bounds (or two-pointer if we were doing this for all i)
-        // Since this is for a single i, we use std.sort.binarySearch
         const left_bound = val_i - mid;
         const right_bound = val_i + mid;
 
-        var l: usize = 0;
-        var r: usize = n;
-        while (l < r) {
-            const m = l + (r - l) / 2;
+        var l_idx: usize = 0;
+        var r_idx: usize = n;
+        while (l_idx < r_idx) {
+            const m = l_idx + (r_idx - l_idx) / 2;
             if (x[m] < left_bound) {
-                l = m + 1;
+                l_idx = m + 1;
             } else {
-                r = m;
+                r_idx = m;
             }
         }
-        const start = l;
+        const start = l_idx;
 
-        l = 0;
-        r = n;
-        while (l < r) {
-            const m = l + (r - l) / 2;
+        l_idx = 0;
+        r_idx = n;
+        while (l_idx < r_idx) {
+            const m = l_idx + (r_idx - l_idx) / 2;
             if (x[m] <= right_bound) {
-                l = m + 1;
+                l_idx = m + 1;
             } else {
-                r = m;
+                r_idx = m;
             }
         }
-        const end = l;
-        count = end - start;
+        const end = l_idx;
+        const count = end - start;
 
-        if (count >= k + 1) { // +1 because |x[i]-x[i]| = 0 is always included
+        if (count >= k) {
             high = mid;
         } else {
             low = mid;
@@ -113,10 +105,8 @@ fn whimed(a: []f64, iw: []i32, n: usize, target: i64) f64 {
         for (l..i) |idx| wleft += iw[idx];
 
         if (wleft > t) {
-            r = i - 1;
+            r = @max(l, i - 1);
         } else {
-            t -= wleft;
-            // Check for elements equal to pivot
             var i_eq = i;
             var j_eq = i;
             while (j_eq <= r) : (j_eq += 1) {
@@ -132,15 +122,67 @@ fn whimed(a: []f64, iw: []i32, n: usize, target: i64) f64 {
             }
             var weq: i64 = 0;
             for (i..i_eq) |idx| weq += iw[idx];
+            
             if (wleft + weq > t) {
                 return pivot;
             } else {
-                t -= weq;
+                t -= (wleft + weq);
                 l = i_eq;
             }
         }
     }
     return a[l];
+}
+
+/// Deterministic Sn Inner Selector (O(log n))
+/// For a given i, calculates the high median of |x[i] - x[j]| for j in [0, n-1], j != i.
+export fn zig_sn_deterministic(x_ptr: [*]const f64, n: usize, i: usize) f64 {
+    const h = n / 2; // Correct rank for j != i to match (n/2 + 1) with j = i
+    return zig_sn_index_select(x_ptr, n, i, h);
+}
+
+fn zig_sn_index_select(x: [*]const f64, n: usize, i: usize, h: usize) f64 {
+    const val_i = x[i];
+    const na: i32 = @intCast(i);
+    const nb: i32 = @intCast(n - 1 - i);
+
+    // We want the h-th smallest in A U B.
+    // A = {val_i - x[i-j] | j=1..na} (sorted)
+    // B = {x[i+j] - val_i | j=1..nb} (sorted)
+    
+    // Standard O(log(min(na, nb))) algorithm for k-th smallest element in union of two sorted arrays.
+    // However, since we access x via index midA/midB, we need to be careful with the mapping.
+    
+    var k = h;
+    var a_start: i32 = 1;
+    const a_end: i32 = na;
+    var b_start: i32 = 1;
+    const b_end: i32 = nb;
+
+    while (true) {
+        if (a_start > a_end) return x[i + @as(usize, @intCast(b_start + @as(i32, @intCast(k)) - 1))] - val_i;
+        if (b_start > b_end) return val_i - x[i - @as(usize, @intCast(a_start + @as(i32, @intCast(k)) - 1))];
+        if (k == 1) {
+            const valA = val_i - x[i - @as(usize, @intCast(a_start))];
+            const valB = x[i + @as(usize, @intCast(b_start))] - val_i;
+            return @min(valA, valB);
+        }
+
+        const half = k / 2;
+        const stepA = @min(@as(i32, @intCast(half)), a_end - a_start + 1);
+        const stepB = @min(@as(i32, @intCast(half)), b_end - b_start + 1);
+        
+        const valA = val_i - x[i - @as(usize, @intCast(a_start + stepA - 1))];
+        const valB = x[i + @as(usize, @intCast(b_start + stepB - 1))] - val_i;
+        
+        if (valA < valB) {
+            k -= @intCast(stepA);
+            a_start += stepA;
+        } else {
+            k -= @intCast(stepB);
+            b_start += stepB;
+        }
+    }
 }
 
 /// Advanced Qn Selector (Johnson-Mizoguchi)
@@ -152,9 +194,9 @@ export fn zig_qn_jm_select(x_ptr: [*]const f64, n: usize, k: u64, work_ptr: [*]f
     const work = work_ptr[0..n];
     const iweight = iweight_ptr[0..n];
 
-    for (0..n) |i| {
-        left[i] = 1;
-        right[i] = @intCast(i);
+    for (0..n) |idx| {
+        left[idx] = 1;
+        right[idx] = @intCast(idx);
     }
 
     var nL: u64 = 0;
@@ -162,11 +204,11 @@ export fn zig_qn_jm_select(x_ptr: [*]const f64, n: usize, k: u64, work_ptr: [*]f
 
     while (nR - nL > n) {
         var m: usize = 0;
-        for (1..n) |i| {
-            if (left[i] <= right[i]) {
-                const w = right[i] - left[i] + 1;
-                const jj = left[i] + @divFloor(w, 2);
-                work[m] = x[i] - x[i - @as(usize, @intCast(jj))];
+        for (1..n) |idx| {
+            if (left[idx] <= right[idx]) {
+                const w = right[idx] - left[idx] + 1;
+                const jj = left[idx] + @divFloor(w, 2);
+                work[m] = x[idx] - x[idx - @as(usize, @intCast(jj))];
                 iweight[m] = w;
                 m += 1;
             }
@@ -174,39 +216,36 @@ export fn zig_qn_jm_select(x_ptr: [*]const f64, n: usize, k: u64, work_ptr: [*]f
 
         const trial = whimed(work[0..m], iweight[0..m], m, @intCast(@divFloor(nR - nL, 2)));
 
-        // Count sumP (elements < trial) and sumQ (elements <= trial)
         var sumP: u64 = 0;
         var sumQ: u64 = 0;
         
-        // Use two-pointer for efficient O(n) counting
-        var jp: usize = 0;
-        var jq: usize = 0;
-        for (1..n) |i| {
-            while (jp < i and (x[i] - x[jp]) >= trial) jp += 1;
-            sumP += (i - jp);
-            while (jq < i and (x[i] - x[jq]) > trial) jq += 1;
-            sumQ += (i - jq);
+        var jp_up: usize = 0;
+        var jq_up: usize = 0;
+        for (1..n) |idx| {
+            while (jp_up < idx and (x[idx] - x[jp_up]) >= trial) jp_up += 1;
+            sumP += (idx - jp_up);
+            while (jq_up < idx and (x[idx] - x[jq_up]) > trial) jq_up += 1;
+            sumQ += (idx - jq_up);
         }
 
         if (k <= sumP) {
-            for (1..n) |i| {
-                // Update right[i] to be the largest jj such that x[i] - x[i-jj] < trial
-                // This means x[i-jj] > x[i] - trial
-                var cur_jj = right[i];
-                while (cur_jj >= left[i] and (x[i] - x[i - @as(usize, @intCast(cur_jj))]) >= trial) {
-                    cur_jj -= 1;
+            var jp_refine: usize = 0;
+            for (1..n) |idx| {
+                while (jp_refine < idx and (x[idx] - x[jp_refine]) >= trial) jp_refine += 1;
+                const jj_bound: i32 = @intCast(idx - jp_refine);
+                if (jj_bound < right[idx]) {
+                    right[idx] = jj_bound;
                 }
-                right[i] = cur_jj;
             }
             nR = sumP;
         } else if (k > sumQ) {
-            for (1..n) |i| {
-                // Update left[i] to be the smallest jj such that x[i] - x[i-jj] > trial
-                var cur_jj = left[i];
-                while (cur_jj <= right[i] and (x[i] - x[i - @as(usize, @intCast(cur_jj))]) <= trial) {
-                    cur_jj += 1;
+            var jq_refine: usize = 0;
+            for (1..n) |idx| {
+                while (jq_refine < idx and (x[idx] - x[jq_refine]) > trial) jq_refine += 1;
+                const jj_bound: i32 = @intCast(idx - jq_refine + 1);
+                if (jj_bound > left[idx]) {
+                    left[idx] = jj_bound;
                 }
-                left[i] = cur_jj;
             }
             nL = sumQ;
         } else {
@@ -214,12 +253,11 @@ export fn zig_qn_jm_select(x_ptr: [*]const f64, n: usize, k: u64, work_ptr: [*]f
         }
     }
 
-    // Final selection on candidates
     var m_final: usize = 0;
-    for (1..n) |i| {
-        var jj = left[i];
-        while (jj <= right[i]) : (jj += 1) {
-            work[m_final] = x[i] - x[i - @as(usize, @intCast(jj))];
+    for (1..n) |idx| {
+        var jj = left[idx];
+        while (jj <= right[idx]) : (jj += 1) {
+            work[m_final] = x[idx] - x[idx - @as(usize, @intCast(jj))];
             m_final += 1;
         }
     }

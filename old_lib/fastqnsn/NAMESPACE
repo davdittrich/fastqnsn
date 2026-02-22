@@ -1,5 +1,0 @@
-useDynLib(fastqnsn, .registration = TRUE)
-importFrom(Rcpp, evalCpp)
-export(sn)
-export(qn)
-import(RcppParallel)
