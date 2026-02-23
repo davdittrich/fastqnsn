@@ -108,7 +108,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
   SnWorker<T> worker(sorted_x.data(), n, inner_medians.data());
 
   if (n > 10000)
-    parallelFor(0, n, worker);
+    parallelFor(0, n, worker, 2048);
   else
     worker(0, n);
 
@@ -241,8 +241,8 @@ template <typename T>
 double C_qn_impl(const T* x_ptr, size_t n) {
   if (n < 2) return NA_REAL;
 
-  if (n <= 256) {
-    T sorted_x[256];
+  if (n <= 45) {
+    T sorted_x[45];
     for (size_t i = 0; i < n; i++) {
         if constexpr (std::is_floating_point_v<T>) {
           if (!std::isfinite(x_ptr[i])) return NA_REAL;
@@ -253,16 +253,16 @@ double C_qn_impl(const T* x_ptr, size_t n) {
 
     size_t num_pairs = n * (n - 1) / 2;
 
-    std::vector<double> diffs;
-    diffs.reserve(num_pairs);
+    double diffs[990]; // 45 * 44 / 2 = 990
+    size_t k_idx = 0;
     for (size_t i = 1; i < n; ++i) {
       for (size_t j = 0; j < i; ++j) {
-        diffs.push_back((double)sorted_x[i] - (double)sorted_x[j]);
+        diffs[k_idx++] = (double)sorted_x[i] - (double)sorted_x[j];
       }
     }
     size_t h = n / 2 + 1;
     size_t k_target = h * (h - 1) / 2;
-    std::nth_element(diffs.begin(), diffs.begin() + k_target - 1, diffs.end());
+    std::nth_element(diffs, diffs + k_target - 1, diffs + num_pairs);
     double raw = diffs[k_target - 1];
     return raw * CONST_QN * get_qn_factor(n);
   }
@@ -306,21 +306,21 @@ double C_qn_impl(const T* x_ptr, size_t n) {
 
     QnCountWorker<T> countWorker(sorted_x.data(), n, trial);
     if (n > 10000)
-        parallelReduce(1, n, countWorker);
+        parallelReduce(1, n, countWorker, 2048);
     else
         countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, true, right.data());
       if (n > 10000)
-          parallelFor(1, n, refineWorker);
+          parallelFor(1, n, refineWorker, 2048);
       else
           refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, false, left.data());
       if (n > 10000)
-          parallelFor(1, n, refineWorker);
+          parallelFor(1, n, refineWorker, 2048);
       else
           refineWorker(1, n);
       nL = countWorker.sumQ;
