@@ -12,7 +12,7 @@ License: MIT
 Encoding: UTF-8
 LazyData: true
 Imports: Rcpp (>= 1.0.0), RcppParallel (>= 5.0.0)
-LinkingTo: Rcpp, RcppParallel
-SystemRequirements: TBB (Intel Threading Building Blocks)
+LinkingTo: Rcpp, RcppParallel, BH
+SystemRequirements: TBB (Intel Threading Building Blocks), C++17
 RoxygenNote: 7.3.3
 Config/zenodo/doi: 10.5281/zenodo.18727053

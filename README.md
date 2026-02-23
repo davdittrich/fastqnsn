@@ -9,8 +9,11 @@
   - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 10000$ for $S_n$, $n \le 3000$ for $Q_n$).
   - **Parallel Path:** Multi-threaded implementation using **RcppParallel (Intel TBB)** for large datasets.
 - **Optimized Kernels:**
-  - **$S_n$:** Efficient $O(n \log n)$ implementation using a two-pointer row-median algorithm after sorting.
-  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for $O(n \log n)$ performance on large datasets, with a brute-force $O(n^2)$ path for very small $n$.
+  - **$S_n$:** Efficient $O(n \log n)$ implementation using a two-pointer row-median algorithm.
+  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for large datasets, with a brute-force $O(n^2)$ path for $n \le 256$.
+- **Advanced Sorting Strategy:**
+  - Uses **Boost Spreadsort** (hybrid radix sort) for small and medium datasets ($n < 7500$ for doubles, $n < 20000$ for integers).
+  - Uses **TBB Parallel Sort** for large datasets.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
   - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
@@ -40,33 +43,34 @@ scale_qn <- qn(x)
 ![Performance Comparison](man/figures/benchmark.png)
 
 ### Summary of Results ($n=1,000,000$)
-Median execution time:
+<<<<<<< HEAD
+Median execution time (30 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 234.5 ms | 85.8 ms | **2.7x** |
-| **$Q_n$** | 1552.9 ms | 518.6 ms | **3.0x** |
+| **$S_n$** | 231.9 ms | 85.6 ms | **2.7x** |
+| **$Q_n$** | 1610.8 ms | 506.2 ms | **3.2x** |
 
 ### Medium Sample Performance ($n=4,000$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 0.64 ms | 0.35 ms | **1.8x** |
-| **$Q_n$** | 3.74 ms | 2.85 ms | **1.3x** |
+| **$S_n$** | 0.62 ms | 0.32 ms | **1.9x** |
+| **$Q_n$** | 3.96 ms | 2.59 ms | **1.5x** |
 
 ### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 17.6 µs | 11.0 µs | **1.6x** |
-| **$Q_n$** | 30.9 µs | 8.3 µs | **3.7x** |
+| **$S_n$** | 7.7 µs | 4.1 µs | **1.9x** |
+| **$Q_n$** | 17.0 µs | 4.3 µs | **4.0x** |
 
 ### Thread Scaling Evaluation
 
 `fastqnsn` has been evaluated for optimal thread allocation across different sample sizes and estimators:
 
 - **$Q_n$ Estimator:**
-  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for $n > 5000$.
+  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for large $n$.
   - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets. Parallelization is enabled for $n > 3000$ to avoid threading overhead on smaller samples.
 - **$S_n$ Estimator:**
   - **Row Medians:** The optimized two-pointer pass is extremely fast, making threading overhead more significant. Parallelization is enabled for $n > 10000$.
