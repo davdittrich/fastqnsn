@@ -6,11 +6,11 @@
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Serial Path ($n \le 2000$):** High-speed deterministic C++ kernels with zero threading overhead for small and medium data.
-  - **Parallel Path ($n > 2000$):** Multi-threaded $O(n \log n)$ implementation using **RcppParallel (Intel TBB)**.
-- **Deterministic Kernels:**
-  - **$S_n$:** Implements the $O(n \log n)$ Shamos (1976) overall-median algorithm.
-  - **$Q_n$:** Optimized Johnson-Mizoguchi (1978) selector with branchless counting.
+  - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 1000$ for $S_n$, $n \le 2000$ for $Q_n$).
+  - **Parallel Path:** Multi-threaded implementation using **RcppParallel (Intel TBB)** for large datasets.
+- **Optimized Kernels:**
+  - **$S_n$:** Efficient $O(n \log n)$ implementation of the Rousseeuw-Croux algorithm.
+  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for $O(n \log n)$ performance on large datasets.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
   - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
@@ -34,21 +34,27 @@ scale_qn <- qn(x)
 ```
 
 ## Benchmarks
-Results from comparison with `robustbase` (median execution time on $N=1,000,000$):
+
+`fastqnsn` is significantly faster than `robustbase` across all sample sizes, especially for large datasets where multi-threading provides a major advantage.
+
+![Performance Comparison](man/figures/benchmark.png)
+
+### Summary of Results ($n=1,000,000$)
+Median execution time over 30 iterations:
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 134.4 ms | 30.7 ms | **4.37x** |
-| **$Q_n$** | 895.8 ms | 523.4 ms | **1.71x** |
+| **$S_n$** | 225.9 ms | 84.0 ms | **2.7x** |
+| **$Q_n$** | 1559.2 ms | 452.6 ms | **3.4x** |
 
-Small-sample results ($n=10$):
+### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 4.6 µs | 2.0 µs | **2.3x** |
-| **$Q_n$** | 10.0 µs | 2.3 µs | **4.3x** |
+| **$S_n$** | 7.6 µs | 4.6 µs | **1.6x** |
+| **$Q_n$** | 16.8 µs | 4.4 µs | **3.8x** |
 
-*Note: `fastqnsn` provides bit-identical results to `robustbase` when matching consistency constants are used.*
+*Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
 ## Authors
 **Dennis Alexis Valin Dittrich** (ORCID: 0000-0002-4438-8276)  
