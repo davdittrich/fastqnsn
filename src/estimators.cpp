@@ -113,7 +113,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
     worker(0, n);
 
   double raw = lowmedian_ptr(inner_medians.data(), n);
-  return raw * 1.1926 * get_sn_factor(n);
+  return raw * 1.19259855312321 * get_sn_factor(n);
 }
 
 // --- QN ESTIMATOR HELPERS ---
@@ -252,6 +252,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
     fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
     size_t num_pairs = n * (n - 1) / 2;
+
     std::vector<double> diffs;
     diffs.reserve(num_pairs);
     for (size_t i = 1; i < n; ++i) {
@@ -275,6 +276,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
   }
 
   fastqnsn::optimized_sort(sorted_x.begin(), sorted_x.end());
+
 
   size_t h = n / 2 + 1;
   uint64_t k_target = (uint64_t)h * (h - 1) / 2;
@@ -323,7 +325,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
           refineWorker(1, n);
       nL = countWorker.sumQ;
     } else {
-      return trial * 2.21914447 * get_qn_factor(n);
+      return trial * 2.21914446598508 * get_qn_factor(n);
     }
   }
 
@@ -336,7 +338,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
   }
   std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
   double raw = final_diffs[k_target - nL - 1];
-  return raw * 2.21914447 * get_qn_factor(n);
+  return raw * 2.21914446598508 * get_qn_factor(n);
 }
 
 // --- R EXPORTS ---
@@ -359,4 +361,5 @@ double C_qn_fast(NumericVector x) {
 // [[Rcpp::export]]
 double C_qn_int_fast(IntegerVector x) {
     return C_qn_impl(x.begin(), x.size());
+
 }

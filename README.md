@@ -43,6 +43,7 @@ scale_qn <- qn(x)
 ![Performance Comparison](man/figures/benchmark.png)
 
 ### Summary of Results ($n=1,000,000$)
+<<<<<<< HEAD
 Median execution time (30 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
