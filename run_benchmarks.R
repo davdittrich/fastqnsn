@@ -20,12 +20,14 @@ for (n in sample_sizes) {
   set.seed(42)
   x <- rnorm(n)
 
+  iter <- if (n >= 200000) 5 else 20
+
   bm <- microbenchmark(
     fastqnsn_sn = fastqnsn::sn(x),
     fastqnsn_qn = fastqnsn::qn(x),
     robustbase_sn = robustbase::Sn(x),
     robustbase_qn = robustbase::Qn(x),
-    times = 30,
+    times = iter,
     unit = "us"
   )
 
