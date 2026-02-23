@@ -112,7 +112,8 @@ double C_sn_fast(NumericVector x) {
   std::vector<double> inner_medians(n);
   SnWorker worker(sorted_x.data(), n, inner_medians.data());
 
-  if (n > 1000)
+  // Threshold for Sn parallelization refined by scaling study
+  if (n > 1500)
     parallelFor(0, n, worker);
   else
     worker(0, n);
@@ -340,7 +341,8 @@ double C_qn_fast(NumericVector x) {
   size_t h = n / 2 + 1;
   uint64_t k_target = (uint64_t)h * (h - 1) / 2;
 
-  if (n <= 2000) {
+  // Threshold for Qn parallelization refined by scaling study
+  if (n <= 3000) {
     std::vector<double> work(n);
     std::vector<int32_t> iweight(n);
     std::vector<int32_t> left(n);

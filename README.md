@@ -40,19 +40,29 @@ scale_qn <- qn(x)
 ![Performance Comparison](man/figures/benchmark.png)
 
 ### Summary of Results ($n=1,000,000$)
-Median execution time over 30 iterations:
+Median execution time:
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 225.9 ms | 84.0 ms | **2.7x** |
-| **$Q_n$** | 1559.2 ms | 452.6 ms | **3.4x** |
+| **$S_n$** | 220.4 ms | 80.3 ms | **2.7x** |
+| **$Q_n$** | 1496.7 ms | 427.9 ms | **3.5x** |
 
 ### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 7.6 µs | 4.6 µs | **1.6x** |
-| **$Q_n$** | 16.8 µs | 4.4 µs | **3.8x** |
+| **$S_n$** | 7.6 µs | 4.1 µs | **1.8x** |
+| **$Q_n$** | 16.9 µs | 4.5 µs | **3.8x** |
+
+### Thread Scaling Evaluation
+
+`fastqnsn` has been evaluated for optimal thread allocation across different sample sizes and estimators:
+
+- **$Q_n$ Estimator:**
+  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for $n > 5000$.
+  - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets ($n > 3000$). For smaller datasets, the overhead of thread management exceeds the benefits, so a serial path is used.
+- **$S_n$ Estimator:**
+  - **Row Medians:** While the algorithm is $O(n \log n)$, the access pattern is less cache-friendly than $Q_n$. Scaling is beneficial for $n > 1500$, but levels off for very large datasets as it becomes memory-latency bound.
 
 *Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
