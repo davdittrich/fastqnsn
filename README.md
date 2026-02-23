@@ -6,11 +6,14 @@
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Serial Path ($n \le 2000$):** High-speed deterministic Zig kernels with zero threading overhead for small and medium data.
-  - **Parallel Path ($n > 2000$):** Multi-threaded $O(n \log n)$ implementation using **RcppParallel (Intel TBB)**.
-- **Deterministic Kernels:**
-  - **$S_n$:** Implements the $O(n \log n)$ Shamos (1976) overall-median algorithm in Zig.
-  - **$Q_n$:** Optimized Johnson-Mizoguchi (1978) selector with branchless counting.
+  - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 10000$ for $S_n$, $n \le 3000$ for $Q_n$).
+  - **Parallel Path:** Multi-threaded implementation using **RcppParallel (Intel TBB)** for large datasets.
+- **Optimized Kernels:**
+  - **$S_n$:** Efficient $O(n \log n)$ implementation using a two-pointer row-median algorithm.
+  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for large datasets, with a brute-force $O(n^2)$ path for $n \le 256$.
+- **Advanced Sorting Strategy:**
+  - Uses **Boost Spreadsort** (hybrid radix sort) for small and medium datasets ($n < 7500$ for doubles, $n < 20000$ for integers).
+  - Uses **TBB Parallel Sort** for large datasets.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
   - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
@@ -19,7 +22,7 @@
 
 ## Installation
 ```R
-# Requires Rcpp, RcppParallel, and a C++ compiler / Zig
+# Requires Rcpp, RcppParallel, and a C++ compiler
 # install.packages("remotes")
 remotes::install_github("davdittrich/fastqnsn")
 ```
@@ -34,21 +37,45 @@ scale_qn <- qn(x)
 ```
 
 ## Benchmarks
-Results from comparison with `robustbase` (median execution time on $N=1,000,000$):
+
+`fastqnsn` is significantly faster than `robustbase` across all sample sizes, especially for large datasets where multi-threading provides a major advantage.
+
+![Performance Comparison](man/figures/benchmark.png)
+
+### Summary of Results ($n=1,000,000$)
+Median execution time (30 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 134.4 ms | 30.7 ms | **4.37x** |
-| **$Q_n$** | 895.8 ms | 523.4 ms | **1.71x** |
+| **$S_n$** | 231.9 ms | 85.6 ms | **2.7x** |
+| **$Q_n$** | 1610.8 ms | 506.2 ms | **3.2x** |
 
-Small-sample results ($n=10$):
+### Medium Sample Performance ($n=4,000$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 4.6 µs | 2.0 µs | **2.3x** |
-| **$Q_n$** | 10.0 µs | 2.3 µs | **4.3x** |
+| **$S_n$** | 0.62 ms | 0.32 ms | **1.9x** |
+| **$Q_n$** | 3.96 ms | 2.59 ms | **1.5x** |
 
-*Note: `fastqnsn` provides bit-identical results to `robustbase` when matching consistency constants are used.*
+### Small Sample Performance ($n=10$)
+
+| Estimator | `robustbase` | `fastqnsn` | Speedup |
+| :--- | :--- | :--- | :--- |
+| **$S_n$** | 7.7 µs | 4.1 µs | **1.9x** |
+| **$Q_n$** | 17.0 µs | 4.3 µs | **4.0x** |
+
+### Thread Scaling Evaluation
+
+`fastqnsn` has been evaluated for optimal thread allocation across different sample sizes and estimators:
+
+- **$Q_n$ Estimator:**
+  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for large $n$.
+  - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets. Parallelization is enabled for $n > 3000$ to avoid threading overhead on smaller samples.
+- **$S_n$ Estimator:**
+  - **Row Medians:** The optimized two-pointer pass is extremely fast, making threading overhead more significant. Parallelization is enabled for $n > 10000$.
+  - **Memory:** Uses stack allocation for $n \le 2000$ to minimize heap pressure.
+
+*Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
 ## Authors
 **Dennis Alexis Valin Dittrich** (ORCID: 0000-0002-4438-8276)  
