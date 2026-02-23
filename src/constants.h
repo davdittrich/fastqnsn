@@ -4,6 +4,10 @@
 #include <cmath>
 #include <cstddef>
 
+// Consistency constants
+inline constexpr double CONST_SN = 1.19259855312321;
+inline constexpr double CONST_QN = 2.21914446598508;
+
 // Bias correction factors from Akinshin (2022) for n=1 to 100
 inline constexpr double factors_sn[] = {
     0.00000, 0.74303, 1.84983, 0.95505, 1.34857, 0.99413, 1.19832, 1.00496, 1.13178, 1.00689,
