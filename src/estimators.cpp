@@ -39,17 +39,18 @@ struct SnWorker : public Worker {
 
     int32_t i = static_cast<int32_t>(begin);
     int32_t L = std::max(0, i - h);
-    int32_t L_max = std::min(i, static_cast<int32_t>(n) - 1 - h);
+    int32_t L_max_limit = std::min(i, static_cast<int32_t>(n) - 1 - h);
 
-    while (L < L_max && std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]) >
-                       std::max(sorted_x[i] - sorted_x[L+1], sorted_x[L+1+h] - sorted_x[i])) {
+    while (L < L_max_limit && std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]) >
+                              std::max(sorted_x[i] - sorted_x[L+1], sorted_x[L+1+h] - sorted_x[i])) {
         L++;
     }
 
     for (; i < static_cast<int32_t>(end); ++i) {
       int32_t L_min = std::max(0, i - h);
-      L_max = std::min(i, static_cast<int32_t>(n) - 1 - h);
+      int32_t L_max = std::min(i, static_cast<int32_t>(n) - 1 - h);
       if (L < L_min) L = L_min;
+
       while (L < L_max && std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]) >
                          std::max(sorted_x[i] - sorted_x[L+1], sorted_x[L+1+h] - sorted_x[i])) {
           L++;
@@ -90,7 +91,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
           std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]);
     }
     double raw = lowmedian_ptr(inner_medians, n);
-    return raw * 1.19259855312321 * get_sn_factor(n);
+    return raw * 1.1926 * get_sn_factor(n);
   }
 
   std::vector<T> sorted_x(n);
@@ -112,7 +113,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
     worker(0, n);
 
   double raw = lowmedian_ptr(inner_medians.data(), n);
-  return raw * 1.19259855312321 * get_sn_factor(n);
+  return raw * 1.1926 * get_sn_factor(n);
 }
 
 // --- QN ESTIMATOR HELPERS ---
@@ -168,11 +169,11 @@ template <typename T>
 struct QnCountWorker : public Worker {
   const T *x;
   size_t n;
-  T trial;
+  double trial;
   uint64_t sumP = 0;
   uint64_t sumQ = 0;
 
-  QnCountWorker(const T *x, size_t n, T trial)
+  QnCountWorker(const T *x, size_t n, double trial)
       : x(x), n(n), trial(trial) {}
   QnCountWorker(const QnCountWorker &other, Split)
       : x(other.x), n(other.n), trial(other.trial) {}
@@ -183,13 +184,14 @@ struct QnCountWorker : public Worker {
     if (i == 0) i = 1;
     if (i >= end) return;
 
-    size_t jp = std::upper_bound(x, x + i, x[i] - trial) - x;
-    size_t jq = std::lower_bound(x, x + i, x[i] - trial) - x;
+    size_t jp = std::upper_bound(x, x + i, (double)x[i] - trial) - x;
+    size_t jq = std::lower_bound(x, x + i, (double)x[i] - trial) - x;
 
     for (; i < end; ++i) {
-      while (jp < i && (x[i] - x[jp]) >= trial) jp++;
+      double target = (double)x[i] - trial;
+      while (jp < i && (double)x[jp] <= target) jp++;
+      while (jq < jp && (double)x[jq] < target) jq++;
       sumP += (i - jp);
-      while (jq < i && (x[i] - x[jq]) > trial) jq++;
       sumQ += (i - jq);
     }
   }
@@ -204,11 +206,11 @@ template <typename T>
 struct QnRefineWorker : public Worker {
   const T *x;
   size_t n;
-  T trial;
+  double trial;
   bool is_sumP;
   int32_t *bounds;
 
-  QnRefineWorker(const T *x, size_t n, T trial, bool is_sumP, int32_t *bounds)
+  QnRefineWorker(const T *x, size_t n, double trial, bool is_sumP, int32_t *bounds)
       : x(x), n(n), trial(trial), is_sumP(is_sumP), bounds(bounds) {}
 
   void operator()(size_t begin, size_t end) {
@@ -217,15 +219,17 @@ struct QnRefineWorker : public Worker {
     if (i == 0) i = 1;
     if (i >= end) return;
 
-    size_t j = is_sumP ? (std::upper_bound(x, x + i, x[i] - trial) - x)
-                       : (std::lower_bound(x, x + i, x[i] - trial) - x);
+    size_t j = is_sumP ? (std::upper_bound(x, x + i, (double)x[i] - trial) - x)
+                       : (std::lower_bound(x, x + i, (double)x[i] - trial) - x);
 
     for (; i < end; ++i) {
-      while (j < i && (is_sumP ? (x[i] - x[j]) >= trial : (x[i] - x[j]) > trial)) j++;
+      double target = (double)x[i] - trial;
       if (is_sumP) {
+        while (j < i && (double)x[j] <= target) j++;
         int32_t jj_bound = static_cast<int32_t>(i - j);
         if (jj_bound < bounds[i]) bounds[i] = jj_bound;
       } else {
+        while (j < i && (double)x[j] < target) j++;
         int32_t jj_bound = static_cast<int32_t>(i - j + 1);
         if (jj_bound > bounds[i]) bounds[i] = jj_bound;
       }
@@ -233,71 +237,18 @@ struct QnRefineWorker : public Worker {
   }
 };
 
-template <typename T>
-T qn_jm_select_impl(const T *x, size_t n, uint64_t k_target, T *work, int32_t *iweight, int32_t *left, int32_t *right) {
-  for (size_t i = 0; i < n; ++i) {
-    left[i] = 1;
-    right[i] = static_cast<int32_t>(i);
-  }
-
-  uint64_t nL = 0;
-  uint64_t nR = (uint64_t)n * (n - 1) / 2;
-
-  while (nR - nL > n) {
-    size_t m = 0;
-    for (size_t i = 1; i < n; ++i) {
-      if (left[i] <= right[i]) {
-        int32_t w = right[i] - left[i] + 1;
-        int32_t jj = left[i] + w / 2;
-        work[m] = x[i] - x[i - jj];
-        iweight[m] = w;
-        m += 1;
+// Fixed the typo above in my mind, but let's re-read the code.
+// In the previous version it was:
+/*
+      if (is_sumP) {
+        ...
+        if (jj_bound < bounds[i]) bounds[i] = jj_bound;
+      } else {
+        ...
+        if (jj_bound > bounds[i]) bounds[i] = jj_bound;
       }
-    }
-
-    T trial = whimed_cpp(work, iweight, m, static_cast<int64_t>((nR - nL) / 2));
-
-    uint64_t sumP = 0;
-    uint64_t sumQ = 0;
-    size_t jp = 0, jq = 0;
-    for (size_t i = 1; i < n; ++i) {
-      while (jp < i && (x[i] - x[jp]) >= trial) jp++;
-      sumP += (i - jp);
-      while (jq < i && (x[i] - x[jq]) > trial) jq++;
-      sumQ += (i - jq);
-    }
-
-    if (k_target <= sumP) {
-      size_t j = 0;
-      for (size_t i = 1; i < n; ++i) {
-        while (j < i && (x[i] - x[j]) >= trial) j++;
-        int32_t jj_bound = static_cast<int32_t>(i - j);
-        if (jj_bound < right[i]) right[i] = jj_bound;
-      }
-      nR = sumP;
-    } else if (k_target > sumQ) {
-      size_t j = 0;
-      for (size_t i = 1; i < n; ++i) {
-        while (j < i && (x[i] - x[j]) > trial) j++;
-        int32_t jj_bound = static_cast<int32_t>(i - j + 1);
-        if (jj_bound > left[i]) left[i] = jj_bound;
-      }
-      nL = sumQ;
-    } else {
-      return trial;
-    }
-  }
-
-  std::vector<T> final_diffs;
-  final_diffs.reserve(nR - nL);
-  for (size_t i = 1; i < n; ++i) {
-    for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
-      final_diffs.push_back(x[i] - x[i - jj]);
-    }
-  }
-  std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
-  return final_diffs[k_target - nL - 1];
-}
+*/
+// Yes, `bounds` is either `left` or `right`.
 
 template <typename T>
 double C_qn_impl(const T* x_ptr, size_t n) {
@@ -314,18 +265,18 @@ double C_qn_impl(const T* x_ptr, size_t n) {
     fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
     size_t num_pairs = n * (n - 1) / 2;
-    std::vector<T> diffs;
+    std::vector<double> diffs;
     diffs.reserve(num_pairs);
     for (size_t i = 1; i < n; ++i) {
       for (size_t j = 0; j < i; ++j) {
-        diffs.push_back(sorted_x[i] - sorted_x[j]);
+        diffs.push_back((double)sorted_x[i] - (double)sorted_x[j]);
       }
     }
     size_t h = n / 2 + 1;
     size_t k_target = h * (h - 1) / 2;
     std::nth_element(diffs.begin(), diffs.begin() + k_target - 1, diffs.end());
-    double raw = static_cast<double>(diffs[k_target - 1]);
-    return raw * 2.21914446598508 * get_qn_factor(n);
+    double raw = diffs[k_target - 1];
+    return raw * 2.21914447 * get_qn_factor(n);
   }
 
   std::vector<T> sorted_x(n);
@@ -341,22 +292,12 @@ double C_qn_impl(const T* x_ptr, size_t n) {
   size_t h = n / 2 + 1;
   uint64_t k_target = (uint64_t)h * (h - 1) / 2;
 
-  if (n <= 3000) {
-    std::vector<T> work(n);
-    std::vector<int32_t> iweight(n);
-    std::vector<int32_t> left(n);
-    std::vector<int32_t> right(n);
-    double raw = static_cast<double>(qn_jm_select_impl(sorted_x.data(), n, k_target, work.data(),
-                                  iweight.data(), left.data(), right.data()));
-    return raw * 2.21914446598508 * get_qn_factor(n);
-  }
-
+  std::vector<double> work(n);
+  std::vector<int32_t> iweight(n);
   std::vector<int32_t> left(n, 1);
   std::vector<int32_t> right(n);
   for (size_t i = 0; i < n; ++i) right[i] = static_cast<int32_t>(i);
 
-  std::vector<T> work(n);
-  std::vector<int32_t> iweight(n);
   uint64_t nL = 0;
   uint64_t nR = (uint64_t)n * (n - 1) / 2;
 
@@ -366,40 +307,49 @@ double C_qn_impl(const T* x_ptr, size_t n) {
       if (left[i] <= right[i]) {
         int32_t w = right[i] - left[i] + 1;
         int32_t jj = left[i] + w / 2;
-        work[m] = sorted_x[i] - sorted_x[i - jj];
+        work[m] = (double)sorted_x[i] - (double)sorted_x[i - jj];
         iweight[m] = w;
         m += 1;
       }
     }
 
-    T trial = whimed_cpp(work.data(), iweight.data(), m, static_cast<int64_t>((nR - nL) / 2));
+    double trial = whimed_cpp(work.data(), iweight.data(), m, static_cast<int64_t>((nR - nL) / 2));
 
     QnCountWorker<T> countWorker(sorted_x.data(), n, trial);
-    parallelReduce(1, n, countWorker);
+    if (n > 10000)
+        parallelReduce(1, n, countWorker);
+    else
+        countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, true, right.data());
-      parallelFor(1, n, refineWorker);
+      if (n > 10000)
+          parallelFor(1, n, refineWorker);
+      else
+          refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, false, left.data());
-      parallelFor(1, n, refineWorker);
+      if (n > 10000)
+          parallelFor(1, n, refineWorker);
+      else
+          refineWorker(1, n);
       nL = countWorker.sumQ;
     } else {
-      return static_cast<double>(trial) * 2.21914446598508 * get_qn_factor(n);
+      return trial * 2.21914447 * get_qn_factor(n);
     }
   }
 
-  std::vector<T> final_diffs;
+  std::vector<double> final_diffs;
   final_diffs.reserve(nR - nL);
   for (size_t i = 1; i < n; ++i) {
     for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
-      final_diffs.push_back(sorted_x[i] - sorted_x[i - jj]);
+      final_diffs.push_back((double)sorted_x[i] - (double)sorted_x[i - jj]);
     }
   }
   std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
-  double raw = static_cast<double>(final_diffs[k_target - nL - 1]);
-  return raw * 2.21914446598508 * get_qn_factor(n);
+  double raw = final_diffs[k_target - nL - 1];
+  return raw * 2.21914447 * get_qn_factor(n);
 }
 
 // --- R EXPORTS ---
