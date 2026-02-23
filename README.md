@@ -6,10 +6,10 @@
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Serial Path ($n \le 2000$):** High-speed deterministic Zig kernels with zero threading overhead for small and medium data.
+  - **Serial Path ($n \le 2000$):** High-speed deterministic C++ kernels with zero threading overhead for small and medium data.
   - **Parallel Path ($n > 2000$):** Multi-threaded $O(n \log n)$ implementation using **RcppParallel (Intel TBB)**.
 - **Deterministic Kernels:**
-  - **$S_n$:** Implements the $O(n \log n)$ Shamos (1976) overall-median algorithm in Zig.
+  - **$S_n$:** Implements the $O(n \log n)$ Shamos (1976) overall-median algorithm.
   - **$Q_n$:** Optimized Johnson-Mizoguchi (1978) selector with branchless counting.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
@@ -19,7 +19,7 @@
 
 ## Installation
 ```R
-# Requires Rcpp, RcppParallel, and a C++ compiler / Zig
+# Requires Rcpp, RcppParallel, and a C++ compiler
 # install.packages("remotes")
 remotes::install_github("davdittrich/fastqnsn")
 ```
