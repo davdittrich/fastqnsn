@@ -10,47 +10,6 @@
 using namespace Rcpp;
 using namespace RcppParallel;
 
-// --- SN INNER KERNEL ---
-
-inline double sn_index_select(const double *x, size_t n, size_t i, size_t h) {
-  const double val_i = x[i];
-  int32_t na = (int32_t)i;
-  int32_t nb = (int32_t)(n - 1 - i);
-
-  size_t k = h;
-  int32_t a_start = 1;
-  int32_t a_end = na;
-  int32_t b_start = 1;
-  int32_t b_end = nb;
-
-  while (true) {
-    if (a_start > a_end)
-      return x[i + (size_t)(b_start + (int32_t)k - 1)] - val_i;
-    if (b_start > b_end)
-      return val_i - x[i - (size_t)(a_start + (int32_t)k - 1)];
-    if (k == 1) {
-      double valA = val_i - x[i - (size_t)a_start];
-      double valB = x[i + (size_t)b_start] - val_i;
-      return (valA < valB) ? valA : valB;
-    }
-
-    size_t half = k / 2;
-    int32_t stepA = std::min((int32_t)half, a_end - a_start + 1);
-    int32_t stepB = std::min((int32_t)half, b_end - b_start + 1);
-
-    double valA = val_i - x[i - (size_t)(a_start + stepA - 1)];
-    double valB = x[i + (size_t)(b_start + stepB - 1)] - val_i;
-
-    if (valA < valB) {
-      k -= (size_t)stepA;
-      a_start += stepA;
-    } else {
-      k -= (size_t)stepB;
-      b_start += stepB;
-    }
-  }
-}
-
 // --- UTILITIES ---
 
 inline double lowmedian_ptr(double *arr, size_t n) {
@@ -71,9 +30,29 @@ struct SnWorker : public Worker {
       : sorted_x(sorted_x), n(n), results(results) {}
 
   void operator()(size_t begin, size_t end) {
-    size_t h = n / 2;
-    for (size_t i = begin; i < end; ++i) {
-      results[i] = sn_index_select(sorted_x, n, i, h);
+    if (begin >= end) return;
+    int32_t h = (int32_t)(n / 2);
+
+    // Initialize L for the start of the chunk
+    int32_t i = (int32_t)begin;
+    int32_t L = std::max(0, i - h);
+    int32_t L_max = std::min(i, (int32_t)n - 1 - h);
+
+    // Find initial optimal L for begin
+    while (L < L_max && std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]) >
+                       std::max(sorted_x[i] - sorted_x[L+1], sorted_x[L+1+h] - sorted_x[i])) {
+        L++;
+    }
+
+    for (; i < (int32_t)end; ++i) {
+      int32_t L_min = std::max(0, i - h);
+      L_max = std::min(i, (int32_t)n - 1 - h);
+      if (L < L_min) L = L_min;
+      while (L < L_max && std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]) >
+                         std::max(sorted_x[i] - sorted_x[L+1], sorted_x[L+1+h] - sorted_x[i])) {
+          L++;
+      }
+      results[i] = std::max(sorted_x[i] - sorted_x[L], sorted_x[L+h] - sorted_x[i]);
     }
   }
 };
@@ -83,26 +62,41 @@ double C_sn_fast(NumericVector x) {
   size_t n = x.size();
   if (n < 2) return NA_REAL;
 
-  if (Rcpp::any(Rcpp::is_na(x)).is_true()) return NA_REAL;
-
   const double *x_ptr = x.begin();
 
-  if (n <= 512) {
-    double sorted_x[512];
-    std::copy(x_ptr, x_ptr + n, sorted_x);
+  if (n <= 2000) {
+    double sorted_x[2000];
+    for (size_t i = 0; i < n; i++) {
+      if (!std::isfinite(x_ptr[i])) return NA_REAL;
+      sorted_x[i] = x_ptr[i];
+    }
     std::sort(sorted_x, sorted_x + n);
 
-    double inner_medians[512];
-    size_t h_inner = n / 2;
-    for (size_t i = 0; i < n; ++i) {
-      inner_medians[i] = sn_index_select(sorted_x, n, i, h_inner);
+    double inner_medians[2000];
+    int32_t h = (int32_t)(n / 2);
+    int32_t L = 0;
+    for (int32_t i = 0; i < (int32_t)n; ++i) {
+      int32_t L_min = std::max(0, i - h);
+      int32_t L_max = std::min(i, (int32_t)n - 1 - h);
+      if (L < L_min) L = L_min;
+      while (L < L_max &&
+             std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]) >
+                 std::max(sorted_x[i] - sorted_x[L + 1],
+                          sorted_x[L + 1 + h] - sorted_x[i])) {
+        L++;
+      }
+      inner_medians[i] =
+          std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]);
     }
     double raw = lowmedian_ptr(inner_medians, n);
     return raw * 1.19259855312321 * get_sn_factor(n);
   }
 
   std::vector<double> sorted_x(n);
-  std::copy(x_ptr, x_ptr + n, sorted_x.begin());
+  for (size_t i = 0; i < n; i++) {
+      if (!std::isfinite(x_ptr[i])) return NA_REAL;
+      sorted_x[i] = x_ptr[i];
+  }
 
   if (n > 5000)
     tbb::parallel_sort(sorted_x.begin(), sorted_x.end());
@@ -113,7 +107,8 @@ double C_sn_fast(NumericVector x) {
   SnWorker worker(sorted_x.data(), n, inner_medians.data());
 
   // Threshold for Sn parallelization refined by scaling study
-  if (n > 1500)
+  // Amortized O(1) row medians are extremely fast, so increase threshold
+  if (n > 10000)
     parallelFor(0, n, worker);
   else
     worker(0, n);
@@ -307,32 +302,37 @@ double C_qn_fast(NumericVector x) {
   size_t n = x.size();
   if (n < 2) return NA_REAL;
 
-  if (Rcpp::any(Rcpp::is_na(x)).is_true()) return NA_REAL;
-
   const double *x_ptr = x.begin();
 
-  if (n <= 128) {
-    double sorted_x[128];
-    std::copy(x_ptr, x_ptr + n, sorted_x);
+  if (n <= 256) {
+    double sorted_x[256];
+    for (size_t i = 0; i < n; i++) {
+        if (!std::isfinite(x_ptr[i])) return NA_REAL;
+        sorted_x[i] = x_ptr[i];
+    }
     std::sort(sorted_x, sorted_x + n);
 
     size_t num_pairs = n * (n - 1) / 2;
-    double diffs[128 * 127 / 2];
-    size_t k = 0;
+    // 256 * 255 / 2 = 32640 doubles ~ 261 KB
+    std::vector<double> diffs;
+    diffs.reserve(num_pairs);
     for (size_t i = 1; i < n; ++i) {
       for (size_t j = 0; j < i; ++j) {
-        diffs[k++] = sorted_x[i] - sorted_x[j];
+        diffs.push_back(sorted_x[i] - sorted_x[j]);
       }
     }
     size_t h = n / 2 + 1;
     size_t k_target = h * (h - 1) / 2;
-    std::nth_element(diffs, diffs + k_target - 1, diffs + num_pairs);
+    std::nth_element(diffs.begin(), diffs.begin() + k_target - 1, diffs.end());
     double raw = diffs[k_target - 1];
     return raw * 2.21914446598508 * get_qn_factor(n);
   }
 
   std::vector<double> sorted_x(n);
-  std::copy(x_ptr, x_ptr + n, sorted_x.begin());
+  for (size_t i = 0; i < n; i++) {
+      if (!std::isfinite(x_ptr[i])) return NA_REAL;
+      sorted_x[i] = x_ptr[i];
+  }
   if (n > 5000)
     tbb::parallel_sort(sorted_x.begin(), sorted_x.end());
   else

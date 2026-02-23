@@ -6,11 +6,11 @@
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 1000$ for $S_n$, $n \le 2000$ for $Q_n$).
+  - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 10000$ for $S_n$, $n \le 3000$ for $Q_n$).
   - **Parallel Path:** Multi-threaded implementation using **RcppParallel (Intel TBB)** for large datasets.
 - **Optimized Kernels:**
-  - **$S_n$:** Efficient $O(n \log n)$ implementation of the Rousseeuw-Croux algorithm.
-  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for $O(n \log n)$ performance on large datasets.
+  - **$S_n$:** Efficient $O(n \log n)$ implementation using a two-pointer row-median algorithm after sorting.
+  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for $O(n \log n)$ performance on large datasets, with a brute-force $O(n^2)$ path for very small $n$.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
   - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
@@ -44,15 +44,22 @@ Median execution time:
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 220.4 ms | 80.3 ms | **2.7x** |
-| **$Q_n$** | 1496.7 ms | 427.9 ms | **3.5x** |
+| **$S_n$** | 234.5 ms | 85.8 ms | **2.7x** |
+| **$Q_n$** | 1552.9 ms | 518.6 ms | **3.0x** |
+
+### Medium Sample Performance ($n=4,000$)
+
+| Estimator | `robustbase` | `fastqnsn` | Speedup |
+| :--- | :--- | :--- | :--- |
+| **$S_n$** | 0.64 ms | 0.35 ms | **1.8x** |
+| **$Q_n$** | 3.74 ms | 2.85 ms | **1.3x** |
 
 ### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 7.6 µs | 4.1 µs | **1.8x** |
-| **$Q_n$** | 16.9 µs | 4.5 µs | **3.8x** |
+| **$S_n$** | 17.6 µs | 11.0 µs | **1.6x** |
+| **$Q_n$** | 30.9 µs | 8.3 µs | **3.7x** |
 
 ### Thread Scaling Evaluation
 
@@ -60,9 +67,10 @@ Median execution time:
 
 - **$Q_n$ Estimator:**
   - **Sorting:** Benefits significantly from `tbb::parallel_sort` for $n > 5000$.
-  - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets ($n > 3000$). For smaller datasets, the overhead of thread management exceeds the benefits, so a serial path is used.
+  - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets. Parallelization is enabled for $n > 3000$ to avoid threading overhead on smaller samples.
 - **$S_n$ Estimator:**
-  - **Row Medians:** While the algorithm is $O(n \log n)$, the access pattern is less cache-friendly than $Q_n$. Scaling is beneficial for $n > 1500$, but levels off for very large datasets as it becomes memory-latency bound.
+  - **Row Medians:** The optimized two-pointer pass is extremely fast, making threading overhead more significant. Parallelization is enabled for $n > 10000$.
+  - **Memory:** Uses stack allocation for $n \le 2000$ to minimize heap pressure.
 
 *Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
