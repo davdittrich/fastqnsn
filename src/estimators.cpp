@@ -1,6 +1,5 @@
 #include <Rcpp.h>
 // [[Rcpp::depends(RcppParallel)]]
-#include "kernels.h"
 #include "constants.h"
 #include <RcppParallel.h>
 #include <algorithm>
@@ -11,7 +10,7 @@
 using namespace Rcpp;
 using namespace RcppParallel;
 
-// --- SN INNER KERNEL (Translated from Zig to C++ for inlining) ---
+// --- SN INNER KERNEL ---
 
 inline double sn_index_select(const double *x, size_t n, size_t i, size_t h) {
   const double val_i = x[i];
@@ -124,6 +123,52 @@ double C_sn_fast(NumericVector x) {
 
 // --- QN ESTIMATOR HELPERS ---
 
+inline double whimed_cpp(double *a, int32_t *iw, size_t n, int64_t target) {
+  if (n == 0) return 0.0;
+  if (n == 1) return a[0];
+
+  size_t l = 0, r = n - 1;
+  int64_t t = target;
+
+  while (l < r) {
+    double pivot = a[l + (r - l) / 2];
+    size_t i = l, j = l;
+    while (j <= r) {
+      if (a[j] < pivot) {
+        std::swap(a[i], a[j]);
+        std::swap(iw[i], iw[j]);
+        i++;
+      }
+      j++;
+    }
+    int64_t wleft = 0;
+    for (size_t idx = l; idx < i; ++idx) wleft += iw[idx];
+
+    if (wleft > t) {
+      r = (i > l) ? i - 1 : l;
+    } else {
+      size_t i_eq = i, j_eq = i;
+      while (j_eq <= r) {
+        if (a[j_eq] == pivot) {
+          std::swap(a[i_eq], a[j_eq]);
+          std::swap(iw[i_eq], iw[j_eq]);
+          i_eq++;
+        }
+        j_eq++;
+      }
+      int64_t weq = 0;
+      for (size_t idx = i; idx < i_eq; ++idx) weq += iw[idx];
+
+      if (wleft + weq > t) return pivot;
+      else {
+        t -= (wleft + weq);
+        l = i_eq;
+      }
+    }
+  }
+  return a[l];
+}
+
 struct QnCountWorker : public Worker {
   const double *x;
   size_t n;
@@ -191,6 +236,71 @@ struct QnRefineWorker : public Worker {
   }
 };
 
+double qn_jm_select_cpp(const double *x, size_t n, uint64_t k_target, double *work, int32_t *iweight, int32_t *left, int32_t *right) {
+  for (size_t i = 0; i < n; ++i) {
+    left[i] = 1;
+    right[i] = (int32_t)i;
+  }
+
+  uint64_t nL = 0;
+  uint64_t nR = (uint64_t)n * (n - 1) / 2;
+
+  while (nR - nL > n) {
+    size_t m = 0;
+    for (size_t i = 1; i < n; ++i) {
+      if (left[i] <= right[i]) {
+        int32_t w = right[i] - left[i] + 1;
+        int32_t jj = left[i] + w / 2;
+        work[m] = x[i] - x[i - jj];
+        iweight[m] = w;
+        m += 1;
+      }
+    }
+
+    double trial = whimed_cpp(work, iweight, m, (int64_t)((nR - nL) / 2));
+
+    uint64_t sumP = 0;
+    uint64_t sumQ = 0;
+    size_t jp = 0, jq = 0;
+    for (size_t i = 1; i < n; ++i) {
+      while (jp < i && (x[i] - x[jp]) >= trial) jp++;
+      sumP += (i - jp);
+      while (jq < i && (x[i] - x[jq]) > trial) jq++;
+      sumQ += (i - jq);
+    }
+
+    if (k_target <= sumP) {
+      size_t j = 0;
+      for (size_t i = 1; i < n; ++i) {
+        while (j < i && (x[i] - x[j]) >= trial) j++;
+        int32_t jj_bound = (int32_t)(i - j);
+        if (jj_bound < right[i]) right[i] = jj_bound;
+      }
+      nR = sumP;
+    } else if (k_target > sumQ) {
+      size_t j = 0;
+      for (size_t i = 1; i < n; ++i) {
+        while (j < i && (x[i] - x[j]) > trial) j++;
+        int32_t jj_bound = (int32_t)(i - j + 1);
+        if (jj_bound > left[i]) left[i] = jj_bound;
+      }
+      nL = sumQ;
+    } else {
+      return trial;
+    }
+  }
+
+  std::vector<double> final_diffs;
+  final_diffs.reserve(nR - nL);
+  for (size_t i = 1; i < n; ++i) {
+    for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
+      final_diffs.push_back(x[i] - x[i - jj]);
+    }
+  }
+  std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
+  return final_diffs[k_target - nL - 1];
+}
+
 // [[Rcpp::export]]
 double C_qn_fast(NumericVector x) {
   size_t n = x.size();
@@ -235,7 +345,7 @@ double C_qn_fast(NumericVector x) {
     std::vector<int32_t> iweight(n);
     std::vector<int32_t> left(n);
     std::vector<int32_t> right(n);
-    double raw = zig_qn_jm_select(sorted_x.data(), n, k_target, work.data(),
+    double raw = qn_jm_select_cpp(sorted_x.data(), n, k_target, work.data(),
                                   iweight.data(), left.data(), right.data());
     return raw * 2.21914446598508 * get_qn_factor(n);
   }
@@ -261,7 +371,7 @@ double C_qn_fast(NumericVector x) {
       }
     }
 
-    double trial = zig_whimed(work.data(), iweight.data(), m, (int64_t)((nR - nL) / 2));
+    double trial = whimed_cpp(work.data(), iweight.data(), m, (int64_t)((nR - nL) / 2));
 
     QnCountWorker countWorker(sorted_x.data(), n, trial);
     parallelReduce(1, n, countWorker);
@@ -279,11 +389,8 @@ double C_qn_fast(NumericVector x) {
     }
   }
 
-  size_t final_size = (size_t)(nR - nL);
-  if (final_size == 0) return 0.0;
-
   std::vector<double> final_diffs;
-  final_diffs.reserve(final_size);
+  final_diffs.reserve(nR - nL);
   for (size_t i = 1; i < n; ++i) {
     for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
       final_diffs.push_back(sorted_x[i] - sorted_x[i - jj]);
