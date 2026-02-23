@@ -23,8 +23,9 @@ The Qn estimator is defined as:
 \deqn{Q_n = d \cdot \{ |x_i - x_j| ; i < j \}_{(k)}}{Qn = d * {|x_i - x_j| ; i < j}(k)}
 This implementation uses a fast hybrid architecture:
 \itemize{
-  \item For sample sizes n <= 2000, an optimized deterministic Zig kernel is used.
-  \item For larger samples (n > 2000), a multi-threaded O(n log n) implementation using the Johnson-Mizoguchi selection algorithm.
+  \item For sample sizes n <= 3000, an optimized deterministic C++ kernel is used.
+  \item For larger samples (n > 3000), a multi-threaded implementation using the Johnson-Mizoguchi selection algorithm.
+  \item Optimized sorting: Uses Boost Spreadsort for small/medium samples and TBB parallel sort for large samples.
 }
 It corrects the legacy typo in consistency constants (legacy 2.2219 vs modern 2.2191)
 and applies finite-sample bias corrections from Akinshin (2022).

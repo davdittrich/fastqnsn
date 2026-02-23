@@ -91,7 +91,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
           std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]);
     }
     double raw = lowmedian_ptr(inner_medians, n);
-    return raw * 1.1926 * get_sn_factor(n);
+    return raw * CONST_SN * get_sn_factor(n);
   }
 
   std::vector<T> sorted_x(n);
@@ -113,7 +113,7 @@ double C_sn_impl(const T* x_ptr, size_t n) {
     worker(0, n);
 
   double raw = lowmedian_ptr(inner_medians.data(), n);
-  return raw * 1.19259855312321 * get_sn_factor(n);
+  return raw * CONST_SN * get_sn_factor(n);
 }
 
 // --- QN ESTIMATOR HELPERS ---
@@ -264,7 +264,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
     size_t k_target = h * (h - 1) / 2;
     std::nth_element(diffs.begin(), diffs.begin() + k_target - 1, diffs.end());
     double raw = diffs[k_target - 1];
-    return raw * 2.21914447 * get_qn_factor(n);
+    return raw * CONST_QN * get_qn_factor(n);
   }
 
   std::vector<T> sorted_x(n);
@@ -325,7 +325,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
           refineWorker(1, n);
       nL = countWorker.sumQ;
     } else {
-      return trial * 2.21914446598508 * get_qn_factor(n);
+      return trial * CONST_QN * get_qn_factor(n);
     }
   }
 
@@ -338,7 +338,7 @@ double C_qn_impl(const T* x_ptr, size_t n) {
   }
   std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
   double raw = final_diffs[k_target - nL - 1];
-  return raw * 2.21914446598508 * get_qn_factor(n);
+  return raw * CONST_QN * get_qn_factor(n);
 }
 
 // --- R EXPORTS ---
