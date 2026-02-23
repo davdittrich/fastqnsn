@@ -237,19 +237,6 @@ struct QnRefineWorker : public Worker {
   }
 };
 
-// Fixed the typo above in my mind, but let's re-read the code.
-// In the previous version it was:
-/*
-      if (is_sumP) {
-        ...
-        if (jj_bound < bounds[i]) bounds[i] = jj_bound;
-      } else {
-        ...
-        if (jj_bound > bounds[i]) bounds[i] = jj_bound;
-      }
-*/
-// Yes, `bounds` is either `left` or `right`.
-
 template <typename T>
 double C_qn_impl(const T* x_ptr, size_t n) {
   if (n < 2) return NA_REAL;
