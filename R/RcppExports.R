@@ -5,7 +5,14 @@ C_sn_fast <- function(x) {
     .Call(`_fastqnsn_C_sn_fast`, x)
 }
 
+C_sn_int_fast <- function(x) {
+    .Call(`_fastqnsn_C_sn_int_fast`, x)
+}
+
 C_qn_fast <- function(x) {
     .Call(`_fastqnsn_C_qn_fast`, x)
 }
 
+C_qn_int_fast <- function(x) {
+    .Call(`_fastqnsn_C_qn_int_fast`, x)
+}

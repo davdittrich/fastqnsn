@@ -21,6 +21,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// C_sn_int_fast
+double C_sn_int_fast(IntegerVector x);
+RcppExport SEXP _fastqnsn_C_sn_int_fast(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(C_sn_int_fast(x));
+    return rcpp_result_gen;
+END_RCPP
+}
 // C_qn_fast
 double C_qn_fast(NumericVector x);
 RcppExport SEXP _fastqnsn_C_qn_fast(SEXP xSEXP) {
@@ -32,10 +43,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// C_qn_int_fast
+double C_qn_int_fast(IntegerVector x);
+RcppExport SEXP _fastqnsn_C_qn_int_fast(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(C_qn_int_fast(x));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_fastqnsn_C_sn_fast", (DL_FUNC) &_fastqnsn_C_sn_fast, 1},
+    {"_fastqnsn_C_sn_int_fast", (DL_FUNC) &_fastqnsn_C_sn_int_fast, 1},
     {"_fastqnsn_C_qn_fast", (DL_FUNC) &_fastqnsn_C_qn_fast, 1},
+    {"_fastqnsn_C_qn_int_fast", (DL_FUNC) &_fastqnsn_C_qn_int_fast, 1},
     {NULL, NULL, 0}
 };
 

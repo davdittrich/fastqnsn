@@ -48,8 +48,9 @@ predict_qn_factor <- function(n) if (n %% 2 == 1) 1 - 1.594 / n + 3.22 / n^2 els
 #' \deqn{S_n = c \cdot \text{lomed}_i \left\{ \text{himed}_j |x_i - x_j| \right\}}{Sn = c * lomed_i { himed_j |x_i - x_j| }}
 #' This implementation uses a fast hybrid architecture:
 #' \itemize{
-#'   \item For sample sizes n <= 2000, a high-speed deterministic Zig kernel is used.
-#'   \item For larger samples (n > 2000), a multi-threaded O(n log n) algorithm via RcppParallel is used.
+#'   \item For sample sizes n <= 10000, a high-speed deterministic C++ kernel is used.
+#'   \item For larger samples (n > 10000), a multi-threaded algorithm via RcppParallel is used.
+#'   \item Optimized sorting: Uses Boost Spreadsort for small/medium samples and TBB parallel sort for large samples.
 #' }
 #' It incorporates modern consistency constants and finite-sample bias correction factors
 #' as described by Akinshin (2022).
@@ -77,9 +78,10 @@ sn <- function(x, na.rm = FALSE) {
   if (n < 2) {
     return(NA_real_)
   }
-  raw_val <- C_sn_fast(x)
-  factor <- if (n <= 100) factors_sn[n] else predict_sn_factor(n)
-  return(raw_val * 1.19259855312321 * factor)
+  if (is.integer(x)) {
+    return(C_sn_int_fast(x))
+  }
+  return(C_sn_fast(x))
 }
 
 #' Robust Qn Scale Estimator
@@ -95,8 +97,9 @@ sn <- function(x, na.rm = FALSE) {
 #' \deqn{Q_n = d \cdot \{ |x_i - x_j| ; i < j \}_{(k)}}{Qn = d * {|x_i - x_j| ; i < j}(k)}
 #' This implementation uses a fast hybrid architecture:
 #' \itemize{
-#'   \item For sample sizes n <= 2000, an optimized deterministic Zig kernel is used.
-#'   \item For larger samples (n > 2000), a multi-threaded O(n log n) implementation using the Johnson-Mizoguchi selection algorithm.
+#'   \item For sample sizes n <= 3000, an optimized deterministic C++ kernel is used.
+#'   \item For larger samples (n > 3000), a multi-threaded implementation using the Johnson-Mizoguchi selection algorithm.
+#'   \item Optimized sorting: Uses Boost Spreadsort for small/medium samples and TBB parallel sort for large samples.
 #' }
 #' It corrects the legacy typo in consistency constants (legacy 2.2219 vs modern 2.2191)
 #' and applies finite-sample bias corrections from Akinshin (2022).
@@ -124,7 +127,8 @@ qn <- function(x, na.rm = FALSE) {
   if (n < 2) {
     return(NA_real_)
   }
-  raw_val <- C_qn_fast(x)
-  factor <- if (n <= 100) factors_qn[n] else predict_qn_factor(n)
-  return(raw_val * 2.21914446598508 * factor)
+  if (is.integer(x)) {
+    return(C_qn_int_fast(x))
+  }
+  return(C_qn_fast(x))
 }

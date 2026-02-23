@@ -1,11 +1,8 @@
-PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -I.
-PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) `"${R_HOME}/bin/Rscript" -e "RcppParallel::RcppParallelLibs()"`
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -I. -std=c++17
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) `"${R_HOME}/bin/Rscript" -e "RcppParallel::RcppParallelLibs()"` -ltbb
 
-OBJECTS = estimators.o kernels.o RcppExports.o
+OBJECTS = estimators.o RcppExports.o
 
 all: $(SHLIB)
-
-kernels.o: kernels.zig
-	zig build-obj -fPIC -O ReleaseFast kernels.zig -femit-bin=kernels.o
 
 .PHONY: all
