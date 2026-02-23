@@ -43,27 +43,26 @@ scale_qn <- qn(x)
 ![Performance Comparison](man/figures/benchmark.png)
 
 ### Summary of Results ($n=1,000,000$)
-<<<<<<< HEAD
 Median execution time (30 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 231.9 ms | 85.6 ms | **2.7x** |
-| **$Q_n$** | 1610.8 ms | 506.2 ms | **3.2x** |
+| **$S_n$** | 215.4 ms | 80.5 ms | **2.7x** |
+| **$Q_n$** | 1450.8 ms | 413.2 ms | **3.5x** |
 
 ### Medium Sample Performance ($n=4,000$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 0.62 ms | 0.32 ms | **1.9x** |
-| **$Q_n$** | 3.96 ms | 2.59 ms | **1.5x** |
+| **$S_n$** | 0.60 ms | 0.26 ms | **2.3x** |
+| **$Q_n$** | 3.73 ms | 2.15 ms | **1.7x** |
 
 ### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 7.7 µs | 4.1 µs | **1.9x** |
-| **$Q_n$** | 17.0 µs | 4.3 µs | **4.0x** |
+| **$S_n$** | 7.4 µs | 3.7 µs | **2.0x** |
+| **$Q_n$** | 15.8 µs | 3.9 µs | **4.0x** |
 
 ### Thread Scaling Evaluation
 
