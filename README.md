@@ -40,15 +40,17 @@ scale_qn <- qn(x)
 
 `fastqnsn` is significantly faster than `robustbase` across all sample sizes, especially for large datasets where multi-threading provides a major advantage.
 
-![Performance Comparison](man/figures/benchmark.png)
+![Density Scaling Performance](man/figures/benchmark_01_n_scaling.png)
 
-### Summary of Results ($n=1,000,000$)
-Median execution time (30 iterations):
+![Strong Scaling Performance](man/figures/benchmark_02_strong_scaling.png)
+
+### Summary of Results ($n=100,000$)
+Median execution time (100 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 215.4 ms | 80.5 ms | **2.7x** |
-| **$Q_n$** | 1450.8 ms | 413.2 ms | **3.5x** |
+| **$S_n$** | 10.8 ms | 8.1 ms | **1.33x** |
+| **$Q_n$** | 94.4 ms | 20.3 ms | **4.66x** |
 
 ### Medium Sample Performance ($n=4,000$)
 
