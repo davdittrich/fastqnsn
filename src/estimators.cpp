@@ -1,6 +1,7 @@
 #include <Rcpp.h>
 // [[Rcpp::depends(RcppParallel)]]
 #include "kernels.h"
+#include "constants.h"
 #include <RcppParallel.h>
 #include <algorithm>
 #include <cmath>
@@ -10,19 +11,57 @@
 using namespace Rcpp;
 using namespace RcppParallel;
 
+// --- SN INNER KERNEL (Translated from Zig to C++ for inlining) ---
+
+inline double sn_index_select(const double *x, size_t n, size_t i, size_t h) {
+  const double val_i = x[i];
+  int32_t na = (int32_t)i;
+  int32_t nb = (int32_t)(n - 1 - i);
+
+  size_t k = h;
+  int32_t a_start = 1;
+  int32_t a_end = na;
+  int32_t b_start = 1;
+  int32_t b_end = nb;
+
+  while (true) {
+    if (a_start > a_end)
+      return x[i + (size_t)(b_start + (int32_t)k - 1)] - val_i;
+    if (b_start > b_end)
+      return val_i - x[i - (size_t)(a_start + (int32_t)k - 1)];
+    if (k == 1) {
+      double valA = val_i - x[i - (size_t)a_start];
+      double valB = x[i + (size_t)b_start] - val_i;
+      return (valA < valB) ? valA : valB;
+    }
+
+    size_t half = k / 2;
+    int32_t stepA = std::min((int32_t)half, a_end - a_start + 1);
+    int32_t stepB = std::min((int32_t)half, b_end - b_start + 1);
+
+    double valA = val_i - x[i - (size_t)(a_start + stepA - 1)];
+    double valB = x[i + (size_t)(b_start + stepB - 1)] - val_i;
+
+    if (valA < valB) {
+      k -= (size_t)stepA;
+      a_start += stepA;
+    } else {
+      k -= (size_t)stepB;
+      b_start += stepB;
+    }
+  }
+}
+
 // --- UTILITIES ---
 
 inline double lowmedian_ptr(double *arr, size_t n) {
-  if (n == 0)
-    return 0.0;
-  // Lo-median of n elements is the ((n+1)/2)-th smallest.
-  // In 0-indexing, this is rank (n-1)/2.
+  if (n == 0) return 0.0;
   size_t h = (n - 1) / 2;
   std::nth_element(arr, arr + h, arr + n);
   return arr[h];
 }
 
-// --- SN ESTIMATOR WORKER (LARGE N) ---
+// --- SN ESTIMATOR WORKER ---
 
 struct SnWorker : public Worker {
   const double *sorted_x;
@@ -33,8 +72,9 @@ struct SnWorker : public Worker {
       : sorted_x(sorted_x), n(n), results(results) {}
 
   void operator()(size_t begin, size_t end) {
+    size_t h = n / 2;
     for (size_t i = begin; i < end; ++i) {
-      results[i] = zig_sn_deterministic(sorted_x, n, i);
+      results[i] = sn_index_select(sorted_x, n, i, h);
     }
   }
 };
@@ -42,10 +82,26 @@ struct SnWorker : public Worker {
 // [[Rcpp::export]]
 double C_sn_fast(NumericVector x) {
   size_t n = x.size();
-  if (n < 2)
-    return NA_REAL;
+  if (n < 2) return NA_REAL;
+
+  if (Rcpp::any(Rcpp::is_na(x)).is_true()) return NA_REAL;
 
   const double *x_ptr = x.begin();
+
+  if (n <= 512) {
+    double sorted_x[512];
+    std::copy(x_ptr, x_ptr + n, sorted_x);
+    std::sort(sorted_x, sorted_x + n);
+
+    double inner_medians[512];
+    size_t h_inner = n / 2;
+    for (size_t i = 0; i < n; ++i) {
+      inner_medians[i] = sn_index_select(sorted_x, n, i, h_inner);
+    }
+    double raw = lowmedian_ptr(inner_medians, n);
+    return raw * 1.19259855312321 * get_sn_factor(n);
+  }
+
   std::vector<double> sorted_x(n);
   std::copy(x_ptr, x_ptr + n, sorted_x.begin());
 
@@ -57,32 +113,113 @@ double C_sn_fast(NumericVector x) {
   std::vector<double> inner_medians(n);
   SnWorker worker(sorted_x.data(), n, inner_medians.data());
 
-  // Threshold tuning: only parallelize for N > 2000
-  if (n > 2000)
+  if (n > 1000)
     parallelFor(0, n, worker);
   else
     worker(0, n);
 
-  return lowmedian_ptr(inner_medians.data(), n);
+  double raw = lowmedian_ptr(inner_medians.data(), n);
+  return raw * 1.19259855312321 * get_sn_factor(n);
 }
 
 // --- QN ESTIMATOR HELPERS ---
 
-// Qn refinement loop (Johnson-Mizoguchi) is now implemented in Zig.
+struct QnCountWorker : public Worker {
+  const double *x;
+  size_t n;
+  double trial;
+  uint64_t sumP = 0;
+  uint64_t sumQ = 0;
 
-// For Qn refinement loop (whimed refinement)
-// This is now partially handled by Zig for efficiency and branchlessness.
-// We'll call whimed_ptr in C++ (it's O(n)) and use Zig for the bounds updates.
+  QnCountWorker(const double *x, size_t n, double trial)
+      : x(x), n(n), trial(trial) {}
+  QnCountWorker(const QnCountWorker &other, Split)
+      : x(other.x), n(other.n), trial(other.trial) {}
 
-extern double whimed_ptr(double *a, int *iw, size_t n);
+  void operator()(size_t begin, size_t end) {
+    if (begin >= end) return;
+    size_t i = begin;
+    if (i == 0) i = 1;
+    if (i >= end) return;
+
+    size_t jp = std::upper_bound(x, x + i, x[i] - trial) - x;
+    size_t jq = std::lower_bound(x, x + i, x[i] - trial) - x;
+
+    for (; i < end; ++i) {
+      while (jp < i && (x[i] - x[jp]) >= trial) jp++;
+      sumP += (i - jp);
+      while (jq < i && (x[i] - x[jq]) > trial) jq++;
+      sumQ += (i - jq);
+    }
+  }
+
+  void join(const QnCountWorker &other) {
+    sumP += other.sumP;
+    sumQ += other.sumQ;
+  }
+};
+
+struct QnRefineWorker : public Worker {
+  const double *x;
+  size_t n;
+  double trial;
+  bool is_sumP;
+  int32_t *bounds;
+
+  QnRefineWorker(const double *x, size_t n, double trial, bool is_sumP, int32_t *bounds)
+      : x(x), n(n), trial(trial), is_sumP(is_sumP), bounds(bounds) {}
+
+  void operator()(size_t begin, size_t end) {
+    if (begin >= end) return;
+    size_t i = begin;
+    if (i == 0) i = 1;
+    if (i >= end) return;
+
+    size_t j = is_sumP ? (std::upper_bound(x, x + i, x[i] - trial) - x)
+                       : (std::lower_bound(x, x + i, x[i] - trial) - x);
+
+    for (; i < end; ++i) {
+      while (j < i && (is_sumP ? (x[i] - x[j]) >= trial : (x[i] - x[j]) > trial)) j++;
+      if (is_sumP) {
+        int32_t jj_bound = (int32_t)(i - j);
+        if (jj_bound < bounds[i]) bounds[i] = jj_bound;
+      } else {
+        int32_t jj_bound = (int32_t)(i - j + 1);
+        if (jj_bound > bounds[i]) bounds[i] = jj_bound;
+      }
+    }
+  }
+};
 
 // [[Rcpp::export]]
 double C_qn_fast(NumericVector x) {
   size_t n = x.size();
-  if (n < 2)
-    return NA_REAL;
+  if (n < 2) return NA_REAL;
+
+  if (Rcpp::any(Rcpp::is_na(x)).is_true()) return NA_REAL;
 
   const double *x_ptr = x.begin();
+
+  if (n <= 128) {
+    double sorted_x[128];
+    std::copy(x_ptr, x_ptr + n, sorted_x);
+    std::sort(sorted_x, sorted_x + n);
+
+    size_t num_pairs = n * (n - 1) / 2;
+    double diffs[128 * 127 / 2];
+    size_t k = 0;
+    for (size_t i = 1; i < n; ++i) {
+      for (size_t j = 0; j < i; ++j) {
+        diffs[k++] = sorted_x[i] - sorted_x[j];
+      }
+    }
+    size_t h = n / 2 + 1;
+    size_t k_target = h * (h - 1) / 2;
+    std::nth_element(diffs, diffs + k_target - 1, diffs + num_pairs);
+    double raw = diffs[k_target - 1];
+    return raw * 2.21914446598508 * get_qn_factor(n);
+  }
+
   std::vector<double> sorted_x(n);
   std::copy(x_ptr, x_ptr + n, sorted_x.begin());
   if (n > 5000)
@@ -93,65 +230,66 @@ double C_qn_fast(NumericVector x) {
   size_t h = n / 2 + 1;
   uint64_t k_target = (uint64_t)h * (h - 1) / 2;
 
-  // For Qn, we use the advanced Johnson-Mizoguchi selector implemented in Zig.
-  // This requires O(n) work space for the algorithm.
+  if (n <= 2000) {
+    std::vector<double> work(n);
+    std::vector<int32_t> iweight(n);
+    std::vector<int32_t> left(n);
+    std::vector<int32_t> right(n);
+    double raw = zig_qn_jm_select(sorted_x.data(), n, k_target, work.data(),
+                                  iweight.data(), left.data(), right.data());
+    return raw * 2.21914446598508 * get_qn_factor(n);
+  }
+
+  std::vector<int32_t> left(n, 1);
+  std::vector<int32_t> right(n);
+  for (size_t i = 0; i < n; ++i) right[i] = (int32_t)i;
+
   std::vector<double> work(n);
   std::vector<int32_t> iweight(n);
-  std::vector<int32_t> left(n);
-  std::vector<int32_t> right(n);
+  uint64_t nL = 0;
+  uint64_t nR = (uint64_t)n * (n - 1) / 2;
 
-  return zig_qn_jm_select(sorted_x.data(), n, k_target, work.data(),
-                          iweight.data(), left.data(), right.data());
-}
-
-// Simplified whimed_ptr for completeness (keeping it in C++ for now to avoid
-// porting selector)
-double whimed_ptr(double *a, int *iw, size_t n) {
-  if (n == 0)
-    return 0.0;
-  if (n == 1)
-    return a[0];
-
-  long long wtotal = 0;
-  for (size_t i = 0; i < n; ++i)
-    wtotal += iw[i];
-  long long target = wtotal / 2;
-
-  size_t left = 0, right = n - 1;
-  while (left < right) {
-    double pivot = a[left + (right - left) / 2];
-    size_t i_lt = left;
-    size_t i_eq = left;
-    for (size_t j = left; j <= right; ++j) {
-      if (a[j] < pivot) {
-        std::swap(a[i_eq], a[j]);
-        std::swap(iw[i_eq], iw[j]);
-        if (i_eq != i_lt) {
-          std::swap(a[i_lt], a[i_eq]);
-          std::swap(iw[i_lt], iw[i_eq]);
-        }
-        i_lt++;
-        i_eq++;
-      } else if (a[j] == pivot) {
-        std::swap(a[i_eq], a[j]);
-        std::swap(iw[i_eq], iw[j]);
-        i_eq++;
+  while (nR - nL > n) {
+    size_t m = 0;
+    for (size_t i = 1; i < n; ++i) {
+      if (left[i] <= right[i]) {
+        int32_t w = right[i] - left[i] + 1;
+        int32_t jj = left[i] + w / 2;
+        work[m] = sorted_x[i] - sorted_x[i - jj];
+        iweight[m] = w;
+        m += 1;
       }
     }
-    long long w_lt = 0;
-    for (size_t k = left; k < i_lt; ++k)
-      w_lt += iw[k];
-    long long w_eq = 0;
-    for (size_t k = i_lt; k < i_eq; ++k)
-      w_eq += iw[k];
-    if (target < w_lt) {
-      right = i_lt - 1;
-    } else if (target < (w_lt + w_eq)) {
-      return pivot;
+
+    double trial = zig_whimed(work.data(), iweight.data(), m, (int64_t)((nR - nL) / 2));
+
+    QnCountWorker countWorker(sorted_x.data(), n, trial);
+    parallelReduce(1, n, countWorker);
+
+    if (k_target <= countWorker.sumP) {
+      QnRefineWorker refineWorker(sorted_x.data(), n, trial, true, right.data());
+      parallelFor(1, n, refineWorker);
+      nR = countWorker.sumP;
+    } else if (k_target > countWorker.sumQ) {
+      QnRefineWorker refineWorker(sorted_x.data(), n, trial, false, left.data());
+      parallelFor(1, n, refineWorker);
+      nL = countWorker.sumQ;
     } else {
-      target -= (w_lt + w_eq);
-      left = i_eq;
+      return trial * 2.21914446598508 * get_qn_factor(n);
     }
   }
-  return a[left];
+
+  size_t final_size = (size_t)(nR - nL);
+  if (final_size == 0) return 0.0;
+
+  std::vector<double> final_diffs;
+  final_diffs.reserve(final_size);
+  for (size_t i = 1; i < n; ++i) {
+    for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
+      final_diffs.push_back(sorted_x[i] - sorted_x[i - jj]);
+    }
+  }
+  std::nth_element(final_diffs.begin(), final_diffs.begin() + (k_target - nL - 1), final_diffs.end());
+  double raw = final_diffs[k_target - nL - 1];
+  return raw * 2.21914446598508 * get_qn_factor(n);
 }

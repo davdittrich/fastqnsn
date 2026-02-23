@@ -20,6 +20,8 @@ double zig_qn_jm_select(const double *x_ptr, size_t n, uint64_t k,
                         double *work_ptr, int32_t *iweight_ptr,
                         int32_t *left_ptr, int32_t *right_ptr);
 
+double zig_whimed(double *a_ptr, int32_t *iw_ptr, size_t n, int64_t target);
+
 #ifdef __cplusplus
 }
 #endif

@@ -78,7 +78,9 @@ export fn zig_qn_count(x_ptr: [*]const f64, n: usize, trial: f64) u64 {
 }
 
 /// Weighted Median Helper for JM
-fn whimed(a: []f64, iw: []i32, n: usize, target: i64) f64 {
+export fn zig_whimed(a_ptr: [*]f64, iw_ptr: [*]i32, n: usize, target: i64) f64 {
+    const a = a_ptr[0..n];
+    const iw = iw_ptr[0..n];
     if (n == 0) return 0.0;
     if (n == 1) return a[0];
 
@@ -214,7 +216,7 @@ export fn zig_qn_jm_select(x_ptr: [*]const f64, n: usize, k: u64, work_ptr: [*]f
             }
         }
 
-        const trial = whimed(work[0..m], iweight[0..m], m, @intCast(@divFloor(nR - nL, 2)));
+        const trial = zig_whimed(work.ptr, iweight.ptr, m, @intCast(@divFloor(nR - nL, 2)));
 
         var sumP: u64 = 0;
         var sumQ: u64 = 0;
