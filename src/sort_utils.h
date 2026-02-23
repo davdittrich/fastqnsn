@@ -16,21 +16,18 @@ void optimized_sort(Iterator begin, Iterator end) {
     if (n < 2) return;
 
     if constexpr (std::is_floating_point_v<T>) {
-        // Threshold for double/float based on benchmark
         if (n < 7500) {
             boost::sort::spreadsort::float_sort(begin, end);
         } else {
             tbb::parallel_sort(begin, end);
         }
     } else if constexpr (std::is_integral_v<T>) {
-        // Threshold for integers based on benchmark
         if (n < 20000) {
             boost::sort::spreadsort::integer_sort(begin, end);
         } else {
             tbb::parallel_sort(begin, end);
         }
     } else {
-        // Fallback for other types
         if (n < 5000) {
             std::sort(begin, end);
         } else {

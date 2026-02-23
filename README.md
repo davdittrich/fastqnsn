@@ -14,7 +14,6 @@
 - **Advanced Sorting Strategy:**
   - Uses **Boost Spreadsort** (hybrid radix sort) for small and medium datasets ($n < 7500$ for doubles, $n < 20000$ for integers).
   - Uses **TBB Parallel Sort** for large datasets.
-  - This combination outperforms `std::sort` and `std::execution::par` across all sample sizes.
 - **Superior Accuracy:** 
   - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
   - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
@@ -48,29 +47,29 @@ Median execution time (30 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 218.0 ms | 79.0 ms | **2.8x** |
-| **$Q_n$** | 1528.8 ms | 451.0 ms | **3.4x** |
+| **$S_n$** | 231.9 ms | 85.6 ms | **2.7x** |
+| **$Q_n$** | 1610.8 ms | 506.2 ms | **3.2x** |
 
 ### Medium Sample Performance ($n=4,000$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 0.65 ms | 0.29 ms | **2.2x** |
-| **$Q_n$** | 3.81 ms | 2.72 ms | **1.4x** |
+| **$S_n$** | 0.62 ms | 0.32 ms | **1.9x** |
+| **$Q_n$** | 3.96 ms | 2.59 ms | **1.5x** |
 
 ### Small Sample Performance ($n=10$)
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 7.4 µs | 4.2 µs | **1.8x** |
-| **$Q_n$** | 16.6 µs | 4.3 µs | **3.8x** |
+| **$S_n$** | 7.7 µs | 4.1 µs | **1.9x** |
+| **$Q_n$** | 17.0 µs | 4.3 µs | **4.0x** |
 
 ### Thread Scaling Evaluation
 
 `fastqnsn` has been evaluated for optimal thread allocation across different sample sizes and estimators:
 
 - **$Q_n$ Estimator:**
-  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for $n > 5000$.
+  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for large $n$.
   - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets. Parallelization is enabled for $n > 3000$ to avoid threading overhead on smaller samples.
 - **$S_n$ Estimator:**
   - **Row Medians:** The optimized two-pointer pass is extremely fast, making threading overhead more significant. Parallelization is enabled for $n > 10000$.
