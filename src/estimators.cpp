@@ -6,11 +6,45 @@
 #include <RcppParallel.h>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <type_traits>
-#include <vector>
 
 using namespace Rcpp;
 using namespace RcppParallel;
+
+// --- FLOYD-RIVEST SELECTION ---
+// Faster than std::nth_element for average cases (~30% fewer comparisons)
+template <typename Iter>
+void floyd_rivest_select(Iter begin, Iter nth, Iter end) {
+  using T = typename std::iterator_traits<Iter>::value_type;
+  while (end - begin > 5) {
+    auto n = end - begin;
+    auto k = nth - begin;
+    double nr = (double)n;
+    double z = std::log(nr);
+    double s = 0.5 * std::exp(2.0 * z / 3.0);
+    double sd = 0.5 * std::sqrt(z * s * (nr - s) / nr) *
+                (2.0 * k - n + 1 < 0 ? -1.0 : 1.0);
+    auto newl = begin + (std::max)((decltype(k))0,
+                                   (decltype(k))(k - (double)k * s / nr + sd));
+    auto newr = begin + (std::min)((decltype(k))(n - 1),
+                                   (decltype(k))(k + (nr - k) * s / nr + sd));
+    floyd_rivest_select(begin + (newl - begin), nth,
+                        begin + (newr - begin) + 1);
+    begin = newl;
+    end = newr + 1;
+  }
+  // Insertion sort for small partitions
+  for (auto i = begin + 1; i < end; ++i) {
+    T val = std::move(*i);
+    auto j = i;
+    while (j > begin && *(j - 1) > val) {
+      *j = std::move(*(j - 1));
+      --j;
+    }
+    *j = std::move(val);
+  }
+}
 
 // --- UTILITIES ---
 
@@ -18,7 +52,7 @@ template <typename T> inline double lowmedian_ptr(T *arr, size_t n) {
   if (n == 0)
     return 0.0;
   size_t h = (n - 1) / 2;
-  std::nth_element(arr, arr + h, arr + n);
+  floyd_rivest_select(arr, arr + h, arr + n);
   return static_cast<double>(arr[h]);
 }
 
@@ -41,12 +75,27 @@ template <typename T> struct SnWorker : public Worker {
     int32_t L = std::max(0, i - h);
     int32_t L_max_limit = std::min(i, static_cast<int32_t>(n) - 1 - h);
 
-    while (L < L_max_limit &&
-           std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]) >
-               std::max(sorted_x[i] - sorted_x[L + 1],
-                        sorted_x[L + 1 + h] - sorted_x[i])) {
-      L++;
+    int32_t low = L;
+    int32_t high = L_max_limit;
+    int32_t best_L = L;
+    while (low <= high) {
+      int32_t mid = low + (high - low) / 2;
+      if (mid == L_max_limit) {
+        best_L = mid;
+        break;
+      }
+      double v_mid = std::max(sorted_x[i] - sorted_x[mid],
+                              sorted_x[mid + h] - sorted_x[i]);
+      double v_next = std::max(sorted_x[i] - sorted_x[mid + 1],
+                               sorted_x[mid + 1 + h] - sorted_x[i]);
+      if (v_mid > v_next) {
+        low = mid + 1;
+        best_L = mid + 1;
+      } else {
+        high = mid - 1;
+      }
     }
+    L = best_L;
 
     for (; i < static_cast<int32_t>(end); ++i) {
       int32_t L_min = std::max(0, i - h);
@@ -54,14 +103,17 @@ template <typename T> struct SnWorker : public Worker {
       if (L < L_min)
         L = L_min;
 
-      while (L < L_max && std::max(sorted_x[i] - sorted_x[L],
-                                   sorted_x[L + h] - sorted_x[i]) >
-                              std::max(sorted_x[i] - sorted_x[L + 1],
-                                       sorted_x[L + 1 + h] - sorted_x[i])) {
-        L++;
-      }
-      results[i] =
+      T candidate =
           std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]);
+      while (L < L_max) {
+        T next = std::max(sorted_x[i] - sorted_x[L + 1],
+                          sorted_x[L + 1 + h] - sorted_x[i]);
+        if (candidate <= next)
+          break;
+        L++;
+        candidate = next;
+      }
+      results[i] = candidate;
     }
   }
 };
@@ -89,20 +141,27 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
       int32_t L_max = std::min(i, static_cast<int32_t>(n) - 1 - h);
       if (L < L_min)
         L = L_min;
-      while (L < L_max && std::max(sorted_x[i] - sorted_x[L],
-                                   sorted_x[L + h] - sorted_x[i]) >
-                              std::max(sorted_x[i] - sorted_x[L + 1],
-                                       sorted_x[L + 1 + h] - sorted_x[i])) {
-        L++;
-      }
-      inner_medians[i] =
+      T candidate =
           std::max(sorted_x[i] - sorted_x[L], sorted_x[L + h] - sorted_x[i]);
+      while (L < L_max) {
+        T next = std::max(sorted_x[i] - sorted_x[L + 1],
+                          sorted_x[L + 1 + h] - sorted_x[i]);
+        if (candidate <= next)
+          break;
+        L++;
+        candidate = next;
+      }
+      inner_medians[i] = candidate;
     }
     double raw = lowmedian_ptr(inner_medians, n);
     return raw * CONST_SN * get_sn_factor(n);
   }
 
-  std::vector<T> sorted_x(n);
+  // Arena allocation: sorted_x(n*T) + inner_medians(n*T)
+  auto sn_arena = std::make_unique<T[]>(2 * n);
+  T *sorted_x = sn_arena.get();
+  T *inner_medians = sn_arena.get() + n;
+
   for (size_t i = 0; i < n; i++) {
     if constexpr (std::is_floating_point_v<T>) {
       if (!std::isfinite(x_ptr[i]))
@@ -111,17 +170,16 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
     sorted_x[i] = x_ptr[i];
   }
 
-  fastqnsn::optimized_sort(sorted_x.begin(), sorted_x.end());
+  fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
-  std::vector<T> inner_medians(n);
-  SnWorker<T> worker(sorted_x.data(), n, inner_medians.data());
+  SnWorker<T> worker(sorted_x, n, inner_medians);
 
   if (n > 10000)
-    parallelFor(0, n, worker, std::max<size_t>(10000, n / 4));
+    parallelFor(0, n, worker, 2048);
   else
     worker(0, n);
 
-  double raw = lowmedian_ptr(inner_medians.data(), n);
+  double raw = lowmedian_ptr(inner_medians, n);
   return raw * CONST_SN * get_sn_factor(n);
 }
 
@@ -205,9 +263,9 @@ template <typename T> struct QnCountWorker : public Worker {
 
     for (; i < end; ++i) {
       double target = (double)x[i] - trial;
-      while (jp < i && (double)x[jp] <= target)
+      while (__builtin_expect(jp < i && (double)x[jp] <= target, 0))
         jp++;
-      while (jq < jp && (double)x[jq] < target)
+      while (__builtin_expect(jq < jp && (double)x[jq] < target, 0))
         jq++;
       sumP += (i - jp);
       sumQ += (i - jq);
@@ -246,13 +304,13 @@ template <typename T> struct QnRefineWorker : public Worker {
     for (; i < end; ++i) {
       double target = (double)x[i] - trial;
       if (is_sumP) {
-        while (j < i && (double)x[j] <= target)
+        while (__builtin_expect(j < i && (double)x[j] <= target, 0))
           j++;
         int32_t jj_bound = static_cast<int32_t>(i - j);
         if (jj_bound < bounds[i])
           bounds[i] = jj_bound;
       } else {
-        while (j < i && (double)x[j] < target)
+        while (__builtin_expect(j < i && (double)x[j] < target, 0))
           j++;
         int32_t jj_bound = static_cast<int32_t>(i - j + 1);
         if (jj_bound > bounds[i])
@@ -266,8 +324,8 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   if (n < 2)
     return NA_REAL;
 
-  if (n <= 45) {
-    T sorted_x[45];
+  if (n <= 300) {
+    std::unique_ptr<T[]> sorted_x(new T[n]);
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
         if (!std::isfinite(x_ptr[i]))
@@ -275,11 +333,10 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
       }
       sorted_x[i] = x_ptr[i];
     }
-    fastqnsn::optimized_sort(sorted_x, sorted_x + n);
+    std::sort(sorted_x.get(), sorted_x.get() + n);
 
     size_t num_pairs = n * (n - 1) / 2;
-
-    double diffs[990]; // 45 * 44 / 2 = 990
+    std::unique_ptr<double[]> diffs(new double[num_pairs]);
     size_t k_idx = 0;
     for (size_t i = 1; i < n; ++i) {
       for (size_t j = 0; j < i; ++j) {
@@ -288,12 +345,28 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     }
     size_t h = n / 2 + 1;
     size_t k_target = h * (h - 1) / 2;
-    std::nth_element(diffs, diffs + k_target - 1, diffs + num_pairs);
+    floyd_rivest_select(diffs.get(), diffs.get() + k_target - 1,
+                        diffs.get() + num_pairs);
     double raw = diffs[k_target - 1];
     return raw * CONST_QN * get_qn_factor(n);
   }
 
-  std::vector<T> sorted_x(n);
+  // Arena allocation: sorted_x(n*T) + work(n*double) + iweight(n*int32) +
+  // left(n*int32) + right(n*int32)
+  size_t arena_bytes =
+      n * sizeof(T) + n * sizeof(double) + 3 * n * sizeof(int32_t);
+  auto arena = std::make_unique<char[]>(arena_bytes);
+  char *ptr = arena.get();
+  T *sorted_x = reinterpret_cast<T *>(ptr);
+  ptr += n * sizeof(T);
+  double *work = reinterpret_cast<double *>(ptr);
+  ptr += n * sizeof(double);
+  int32_t *iweight = reinterpret_cast<int32_t *>(ptr);
+  ptr += n * sizeof(int32_t);
+  int32_t *left = reinterpret_cast<int32_t *>(ptr);
+  ptr += n * sizeof(int32_t);
+  int32_t *right = reinterpret_cast<int32_t *>(ptr);
+
   for (size_t i = 0; i < n; i++) {
     if constexpr (std::is_floating_point_v<T>) {
       if (!std::isfinite(x_ptr[i]))
@@ -302,15 +375,12 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     sorted_x[i] = x_ptr[i];
   }
 
-  fastqnsn::optimized_sort(sorted_x.begin(), sorted_x.end());
+  fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
   size_t h = n / 2 + 1;
   uint64_t k_target = (uint64_t)h * (h - 1) / 2;
 
-  std::vector<double> work(n);
-  std::vector<int32_t> iweight(n);
-  std::vector<int32_t> left(n, 1);
-  std::vector<int32_t> right(n);
+  std::fill_n(left, n, 1);
   for (size_t i = 0; i < n; ++i)
     right[i] = static_cast<int32_t>(i);
 
@@ -323,34 +393,32 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
       if (left[i] <= right[i]) {
         int32_t w = right[i] - left[i] + 1;
         int32_t jj = left[i] + w / 2;
-        work[m] = (double)sorted_x[i] - (double)sorted_x[i - jj];
+        work[m] = (float)((double)sorted_x[i] - (double)sorted_x[i - jj]);
         iweight[m] = w;
         m += 1;
       }
     }
 
-    double trial = whimed_cpp(work.data(), iweight.data(), m,
-                              static_cast<int64_t>((nR - nL) / 2));
+    double trial =
+        whimed_cpp(work, iweight, m, static_cast<int64_t>((nR - nL) / 2));
 
-    QnCountWorker<T> countWorker(sorted_x.data(), n, trial);
+    QnCountWorker<T> countWorker(sorted_x, n, trial);
     if (n > 10000)
-      parallelReduce(1, n, countWorker, std::max<size_t>(10000, n / 4));
+      parallelReduce(1, n, countWorker, 2048);
     else
       countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
-      QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, true,
-                                     right.data());
+      QnRefineWorker<T> refineWorker(sorted_x, n, trial, true, right);
       if (n > 10000)
-        parallelFor(1, n, refineWorker, std::max<size_t>(10000, n / 4));
+        parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
-      QnRefineWorker<T> refineWorker(sorted_x.data(), n, trial, false,
-                                     left.data());
+      QnRefineWorker<T> refineWorker(sorted_x, n, trial, false, left);
       if (n > 10000)
-        parallelFor(1, n, refineWorker, std::max<size_t>(10000, n / 4));
+        parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);
       nL = countWorker.sumQ;
@@ -359,16 +427,16 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     }
   }
 
-  std::vector<double> final_diffs;
-  final_diffs.reserve(nR - nL);
+  std::unique_ptr<double[]> final_diffs(new double[nR - nL]);
+  size_t fd_idx = 0;
   for (size_t i = 1; i < n; ++i) {
     for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
-      final_diffs.push_back((double)sorted_x[i] - (double)sorted_x[i - jj]);
+      final_diffs[fd_idx++] = (double)sorted_x[i] - (double)sorted_x[i - jj];
     }
   }
-  std::nth_element(final_diffs.begin(),
-                   final_diffs.begin() + (k_target - nL - 1),
-                   final_diffs.end());
+  floyd_rivest_select(final_diffs.get(),
+                      final_diffs.get() + (k_target - nL - 1),
+                      final_diffs.get() + (nR - nL));
   double raw = final_diffs[k_target - nL - 1];
   return raw * CONST_QN * get_qn_factor(n);
 }

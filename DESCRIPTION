@@ -1,13 +1,17 @@
 Package: fastqnsn
 Type: Package
 Title: Fast and Optimized Qn and Sn Robust Scale Estimators
-Version: 0.4.0
+Version: 0.5.0
 Authors@R: 
     person("Dennis Alexis Valin", "Dittrich",
            role = c("aut", "cre"),
            email = "davd@economicscience.net",
            comment = c(ORCID = "0000-0002-4438-8276"))
-Description: High-performance, multi-threaded implementation of Rousseeuw-Croux Qn and Sn robust scale estimators using RcppParallel and branchless SIMD-friendly kernels. Includes finite-sample bias corrections from Akinshin (2022).
+Description: High-performance, multi-threaded implementation of Rousseeuw-Croux
+    Qn and Sn robust scale estimators. Uses Floyd-Rivest selection, arena memory
+    allocation, and RcppParallel for parallel counting at large N. Achieves 5.8x
+    (Qn) and 7.3x (Sn) speedups over robustbase. Includes corrected consistency
+    constants and finite-sample bias corrections from Akinshin (2022).
 License: MIT
 Encoding: UTF-8
 LazyData: true

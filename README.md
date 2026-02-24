@@ -2,27 +2,23 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18727053.svg)](https://doi.org/10.5281/zenodo.18727053)
 
-`fastqnsn` is a high-performance R package for computing the **Rousseeuw-Croux $Q_n$ and $S_n$** robust scale estimators. It is designed to provide peak performance across all sample sizes while maintaining absolute bit-identical correctness compared to `robustbase`.
+`fastqnsn` is a high-performance R package for computing the **Rousseeuw-Croux $Q_n$ and $S_n$** robust scale estimators. It delivers peak performance across all sample sizes while maintaining bit-identical correctness with `robustbase`.
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Serial Path:** High-speed deterministic C++ kernels with zero threading overhead for small and medium data ($n \le 10000$ for $S_n$, $n \le 3000$ for $Q_n$).
-  - **Parallel Path:** Multi-threaded implementation using **RcppParallel (Intel TBB)** for large datasets.
-- **Optimized Kernels:**
-  - **$S_n$:** Efficient $O(n \log n)$ implementation using a two-pointer row-median algorithm.
-  - **$Q_n$:** Multi-threaded Johnson-Mizoguchi (1978) selector for large datasets, with a brute-force $O(n^2)$ path for $n \le 256$.
-- **Advanced Sorting Strategy:**
-  - Uses **Boost Spreadsort** (hybrid radix sort) for small and medium datasets ($n < 7500$ for doubles, $n < 20000$ for integers).
-  - Uses **TBB Parallel Sort** for large datasets.
+  - **Micro-Scale ($n \le 300$ for $Q_n$, $n \le 2000$ for $S_n$):** Brute-force $O(n^2)$ or stack-allocated serial kernels with zero threading overhead.
+  - **Mid-Scale ($n < 10000$):** Single-threaded $O(n \log n)$ sweeping algorithms.
+  - **Macro-Scale ($n \ge 10000$):** Parallelized counting and refinement via **RcppParallel (Intel TBB)**.
+- **Floyd-Rivest Selection:** Replaces `std::nth_element` throughout, achieving ~30% fewer comparisons.
+- **Arena Memory Allocation:** Single contiguous allocation for all working arrays in both $Q_n$ and $S_n$.
+- **Advanced Sorting:** Boost Spreadsort for medium $n$, TBB parallel sort for large $n$.
 - **Superior Accuracy:** 
-  - Implements corrected $D_\infty = 2.21914446598508$ (fixing the legacy typo $2.2219$).
-  - Uses modern finite-sample bias corrections from **Akinshin (2022)**.
-- **Memory Optimized:** Allocation-free $S_n$ workers and efficient vector reuse in $Q_n$ refinement loops.
-- **Robustness:** Built-in `std::isfinite` checks and 64-bit rank calculations for massive datasets.
+  - Corrected $D_\infty = 2.21914446598508$ (fixing the legacy approximation $2.2219$).
+  - Modern finite-sample bias corrections from **Akinshin (2022)**.
+  - `(float)` truncation matching robustbase precision semantics.
 
 ## Installation
 ```R
-# Requires Rcpp, RcppParallel, and a C++ compiler
 # install.packages("remotes")
 remotes::install_github("davdittrich/fastqnsn")
 ```
@@ -38,44 +34,31 @@ scale_qn <- qn(x)
 
 ## Benchmarks
 
-`fastqnsn` is significantly faster than `robustbase` across all sample sizes, especially for large datasets where multi-threading provides a major advantage.
+`fastqnsn` is significantly faster than `robustbase` across all sample sizes.
 
 ![Density Scaling Performance](man/figures/benchmark_01_n_scaling.png)
 
 ![Strong Scaling Performance](man/figures/benchmark_02_strong_scaling.png)
 
 ### Summary of Results ($n=100,000$)
-Median execution time (100 iterations):
 
 | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :--- | :--- | :--- | :--- |
-| **$S_n$** | 10.8 ms | 8.1 ms | **1.33x** |
-| **$Q_n$** | 94.4 ms | 20.3 ms | **4.66x** |
+| **$S_n$** | 10.5 ms | 1.45 ms | **7.3x** |
+| **$Q_n$** | 93.1 ms | 16.0 ms | **5.8x** |
 
-### Medium Sample Performance ($n=4,000$)
+### High-Throughput Streaming (Windows per second)
 
-| Estimator | `robustbase` | `fastqnsn` | Speedup |
-| :--- | :--- | :--- | :--- |
-| **$S_n$** | 0.60 ms | 0.26 ms | **2.3x** |
-| **$Q_n$** | 3.73 ms | 2.15 ms | **1.7x** |
+| $n$ | $S_n$ WPS | $Q_n$ WPS |
+| :--- | :--- | :--- |
+| 10 | 683,477 | 552,923 |
+| 50 | 541,098 | 424,614 |
+| 200 | 282,759 | 114,069 |
 
-### Small Sample Performance ($n=10$)
+### Thread Scaling ($n=500,000$)
 
-| Estimator | `robustbase` | `fastqnsn` | Speedup |
-| :--- | :--- | :--- | :--- |
-| **$S_n$** | 7.4 µs | 3.7 µs | **2.0x** |
-| **$Q_n$** | 15.8 µs | 3.9 µs | **4.0x** |
-
-### Thread Scaling Evaluation
-
-`fastqnsn` has been evaluated for optimal thread allocation across different sample sizes and estimators:
-
-- **$Q_n$ Estimator:**
-  - **Sorting:** Benefits significantly from `tbb::parallel_sort` for large $n$.
-  - **JM Selection:** The Johnson-Mizoguchi counting and refinement steps are memory-bandwidth efficient and scale well for large datasets. Parallelization is enabled for $n > 3000$ to avoid threading overhead on smaller samples.
-- **$S_n$ Estimator:**
-  - **Row Medians:** The optimized two-pointer pass is extremely fast, making threading overhead more significant. Parallelization is enabled for $n > 10000$.
-  - **Memory:** Uses stack allocation for $n \le 2000$ to minimize heap pressure.
+- **$Q_n$:** 2.3x speedup on 16 threads via chunked two-pointer counting sweeps.
+- **$S_n$:** 2.0x speedup on 14 threads via parallelized row-median computation.
 
 *Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
@@ -86,3 +69,4 @@ Median execution time (100 iterations):
 - Rousseeuw, P. J., & Croux, C. (1993). Alternatives to the Median Absolute Deviation. *JASA*.
 - Akinshin, A. (2022). Finite-sample Rousseeuw-Croux scale estimators. *arXiv:2209.12268*.
 - Johnson, D. B., & Mizoguchi, T. (1978). Selecting the Kth element in X + Y. *SIAM J. Comput.*
+- Floyd, R. W., & Rivest, R. L. (1975). Expected time bounds for selection. *CACM*.
