@@ -338,7 +338,7 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
                "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= 3000) {
+  if (n <= 1024) {
     std::unique_ptr<T[]> sorted_x(new T[n]);
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
