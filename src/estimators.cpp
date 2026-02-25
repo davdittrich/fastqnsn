@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
-#include <type_traits>
 #include <new>
+#include <type_traits>
 
 using namespace Rcpp;
 using namespace RcppParallel;
@@ -123,7 +123,8 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
   if (n < 2)
     return NA_REAL;
   if (n > 6060000000ULL)
-    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.");
+    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
+               "64-bit pair boundaries. 128-bit architecture required.");
 
   if (n <= 2000) {
     T sorted_x[2000];
@@ -164,8 +165,10 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
   std::unique_ptr<T[]> sn_arena;
   try {
     sn_arena = std::make_unique<T[]>(2 * n);
-  } catch (const std::bad_alloc& e) {
-    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for Sn arena.", 2 * n * sizeof(T));
+  } catch (const std::bad_alloc &e) {
+    Rcpp::stop(
+        "fastqnsn Out of Memory: failed to allocate %zu bytes for Sn arena.",
+        2 * n * sizeof(T));
   }
   T *sorted_x = sn_arena.get();
   T *inner_medians = sn_arena.get() + n;
@@ -332,9 +335,10 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   if (n < 2)
     return NA_REAL;
   if (n > 6060000000ULL)
-    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.");
+    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
+               "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= 300) {
+  if (n <= 3000) {
     std::unique_ptr<T[]> sorted_x(new T[n]);
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
@@ -368,8 +372,10 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   std::unique_ptr<char[]> arena;
   try {
     arena = std::make_unique<char[]>(arena_bytes);
-  } catch (const std::bad_alloc& e) {
-    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for Qn arena.", arena_bytes);
+  } catch (const std::bad_alloc &e) {
+    Rcpp::stop(
+        "fastqnsn Out of Memory: failed to allocate %zu bytes for Qn arena.",
+        arena_bytes);
   }
   char *ptr = arena.get();
   T *sorted_x = reinterpret_cast<T *>(ptr);
@@ -445,8 +451,10 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   std::unique_ptr<double[]> final_diffs;
   try {
     final_diffs = std::make_unique<double[]>(nR - nL);
-  } catch (const std::bad_alloc& e) {
-    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for final Qn diffs.", (size_t)(nR - nL) * sizeof(double));
+  } catch (const std::bad_alloc &e) {
+    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for final "
+               "Qn diffs.",
+               (size_t)(nR - nL) * sizeof(double));
   }
   size_t fd_idx = 0;
   for (size_t i = 1; i < n; ++i) {
