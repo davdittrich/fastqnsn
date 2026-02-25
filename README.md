@@ -42,20 +42,20 @@ scale_qn <- qn(x)
 
 ### Extreme Scale Synthesis (The $10^8$ Frontier)
 
-Rigorous testing up to $N=10^8$ confirms `fastqnsn` safely calculates robust scales on Big Data where legacy implementations (like `robustbase` or `statsmodels`) crash due to memory indexing bugs or integer overflows.
+Rigorous testing up to $N=10^8$ confirms `fastqnsn` safely calculates robust scales on Big Data where legacy implementations struggle with memory pressure and severe performance bottlenecks.
 
 | Sample Size ($N$) | Estimator | `robustbase` | `fastqnsn` | Speedup |
 | :---: | :---: | :--- | :--- | :---: |
-| **$10^6$** | $S_n$ | 0.12 s | **0.01 s** | **~12x** |
-| | $Q_n$ | 0.96 s | **0.18 s** | **~5.3x** |
-| **$10^7$** | $S_n$ | 1.40 s | **0.14 s** | **~10x** |
-| | $Q_n$ | 23.29 s | **2.62 s** | **~8.8x** |
-| **$10^8$** | $S_n$ | **Crash (32-bit Bug)** | **1.57 s** | $\infty$ |
-| | $Q_n$ | **Crash (32-bit Bug)** | **21.35 s** | $\infty$ |
+| **$10^6$** | $S_n$ | 0.158 s | **0.049 s** | **~3.2x** |
+| | $Q_n$ | 0.891 s | **0.559 s** | **~1.6x** |
+| **$10^7$** | $S_n$ | 1.715 s | **0.367 s** | **~4.7x** |
+| | $Q_n$ | 22.83 s | **6.54 s** | **~3.5x** |
+| **$10^8$** | $S_n$ | 16.06 s | **3.61 s** | **~4.4x** |
+| | $Q_n$ | 94.48 s | **69.49 s** | **~1.4x** |
 
-**Memory & Overflow Safety:** `fastqnsn` implements native 64-bit pair-space verification. A hard internal bound at $N = 6.06 \times 10^9$ gracefully prevents the terminal 64-bit unsigned integer overflow ($\approx 1.84 \times 10^{19}$ pairs) before state corruption occurs, and `std::make_unique` allocations strictly guard against Out of Memory (OOM) segment-faults.
+**Memory & Overflow Safety:** `fastqnsn` implements native 64-bit pair-space verification. A hard internal bound at $N = 6.06 \times 10^9$ gracefully prevents the terminal 64-bit unsigned integer overflow ($\approx 1.84 \times 10^{19}$ pairs) before theoretical state corruption occurs, and `std::make_unique` allocations strictly guard against Out of Memory (OOM) segment-faults that completely crash vector-based frameworks.
 
-*Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
+*Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022).*
 
 ## Authors
 **Dennis Alexis Valin Dittrich** (ORCID: 0000-0002-4438-8276)  
