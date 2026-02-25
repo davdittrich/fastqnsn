@@ -18,7 +18,7 @@ template <typename Iterator> void optimized_sort(Iterator begin, Iterator end) {
   if constexpr (std::is_floating_point_v<T>) {
     if (n <= 256) {
       std::sort(begin, end);
-    } else if (n < 7500) {
+    } else if (n < 8192) {
       boost::sort::spreadsort::float_sort(begin, end);
     } else {
       tbb::parallel_sort(begin, end);
@@ -26,13 +26,13 @@ template <typename Iterator> void optimized_sort(Iterator begin, Iterator end) {
   } else if constexpr (std::is_integral_v<T>) {
     if (n <= 256) {
       std::sort(begin, end);
-    } else if (n < 20000) {
+    } else if (n < 16384) {
       boost::sort::spreadsort::integer_sort(begin, end);
     } else {
       tbb::parallel_sort(begin, end);
     }
   } else {
-    if (n < 5000) {
+    if (n < 4096) {
       std::sort(begin, end);
     } else {
       tbb::parallel_sort(begin, end);

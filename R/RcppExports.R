@@ -16,3 +16,4 @@ C_qn_fast <- function(x) {
 C_qn_int_fast <- function(x) {
     .Call(`_fastqnsn_C_qn_int_fast`, x)
 }
+
