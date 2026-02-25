@@ -26,7 +26,7 @@ template <typename Iterator> void optimized_sort(Iterator begin, Iterator end) {
   } else if constexpr (std::is_integral_v<T>) {
     if (n <= 256) {
       std::sort(begin, end);
-    } else if (n < 16384) {
+    } else if (n < 4096) {
       boost::sort::spreadsort::integer_sort(begin, end);
     } else {
       tbb::parallel_sort(begin, end);
