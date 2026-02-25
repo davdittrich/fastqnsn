@@ -46,6 +46,9 @@ sn <- function(x, na.rm = FALSE) {
   if (n < 2) {
     return(NA_real_)
   }
+  if (n > 6060000000) {
+    stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.")
+  }
   if (is.integer(x)) {
     return(C_sn_int_fast(x))
   }
@@ -94,6 +97,9 @@ qn <- function(x, na.rm = FALSE) {
   n <- length(x)
   if (n < 2) {
     return(NA_real_)
+  }
+  if (n > 6060000000) {
+    stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.")
   }
   if (is.integer(x)) {
     return(C_qn_int_fast(x))

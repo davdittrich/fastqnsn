@@ -8,6 +8,7 @@
 #include <cmath>
 #include <memory>
 #include <type_traits>
+#include <new>
 
 using namespace Rcpp;
 using namespace RcppParallel;
@@ -121,6 +122,8 @@ template <typename T> struct SnWorker : public Worker {
 template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
   if (n < 2)
     return NA_REAL;
+  if (n > 6060000000ULL)
+    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.");
 
   if (n <= 2000) {
     T sorted_x[2000];
@@ -158,7 +161,12 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
   }
 
   // Arena allocation: sorted_x(n*T) + inner_medians(n*T)
-  auto sn_arena = std::make_unique<T[]>(2 * n);
+  std::unique_ptr<T[]> sn_arena;
+  try {
+    sn_arena = std::make_unique<T[]>(2 * n);
+  } catch (const std::bad_alloc& e) {
+    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for Sn arena.", 2 * n * sizeof(T));
+  }
   T *sorted_x = sn_arena.get();
   T *inner_medians = sn_arena.get() + n;
 
@@ -323,6 +331,8 @@ template <typename T> struct QnRefineWorker : public Worker {
 template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   if (n < 2)
     return NA_REAL;
+  if (n > 6060000000ULL)
+    Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows 64-bit pair boundaries. 128-bit architecture required.");
 
   if (n <= 300) {
     std::unique_ptr<T[]> sorted_x(new T[n]);
@@ -355,7 +365,12 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
   // left(n*int32) + right(n*int32)
   size_t arena_bytes =
       n * sizeof(T) + n * sizeof(double) + 3 * n * sizeof(int32_t);
-  auto arena = std::make_unique<char[]>(arena_bytes);
+  std::unique_ptr<char[]> arena;
+  try {
+    arena = std::make_unique<char[]>(arena_bytes);
+  } catch (const std::bad_alloc& e) {
+    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for Qn arena.", arena_bytes);
+  }
   char *ptr = arena.get();
   T *sorted_x = reinterpret_cast<T *>(ptr);
   ptr += n * sizeof(T);
@@ -427,7 +442,12 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     }
   }
 
-  std::unique_ptr<double[]> final_diffs(new double[nR - nL]);
+  std::unique_ptr<double[]> final_diffs;
+  try {
+    final_diffs = std::make_unique<double[]>(nR - nL);
+  } catch (const std::bad_alloc& e) {
+    Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for final Qn diffs.", (size_t)(nR - nL) * sizeof(double));
+  }
   size_t fd_idx = 0;
   for (size_t i = 1; i < n; ++i) {
     for (int32_t jj = left[i]; jj <= right[i]; ++jj) {
