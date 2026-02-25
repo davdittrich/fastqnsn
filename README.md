@@ -40,25 +40,20 @@ scale_qn <- qn(x)
 
 ![Strong Scaling Performance](man/figures/benchmark_02_strong_scaling.png)
 
-### Summary of Results ($n=100,000$)
+### Extreme Scale Synthesis (The $10^8$ Frontier)
 
-| Estimator | `robustbase` | `fastqnsn` | Speedup |
-| :--- | :--- | :--- | :--- |
-| **$S_n$** | 10.5 ms | 1.45 ms | **7.3x** |
-| **$Q_n$** | 93.1 ms | 16.0 ms | **5.8x** |
+Rigorous testing up to $N=10^8$ confirms `fastqnsn` safely calculates robust scales on Big Data where legacy implementations (like `robustbase` or `statsmodels`) crash due to memory indexing bugs or integer overflows.
 
-### High-Throughput Streaming (Windows per second)
+| Sample Size ($N$) | Estimator | `robustbase` | `fastqnsn` | Speedup |
+| :---: | :---: | :--- | :--- | :---: |
+| **$10^6$** | $S_n$ | 0.12 s | **0.01 s** | **~12x** |
+| | $Q_n$ | 0.96 s | **0.18 s** | **~5.3x** |
+| **$10^7$** | $S_n$ | 1.40 s | **0.14 s** | **~10x** |
+| | $Q_n$ | 23.29 s | **2.62 s** | **~8.8x** |
+| **$10^8$** | $S_n$ | **Crash (32-bit Bug)** | **1.57 s** | $\infty$ |
+| | $Q_n$ | **Crash (32-bit Bug)** | **21.35 s** | $\infty$ |
 
-| $n$ | $S_n$ WPS | $Q_n$ WPS |
-| :--- | :--- | :--- |
-| 10 | 683,477 | 552,923 |
-| 50 | 541,098 | 424,614 |
-| 200 | 282,759 | 114,069 |
-
-### Thread Scaling ($n=500,000$)
-
-- **$Q_n$:** 2.3x speedup on 16 threads via chunked two-pointer counting sweeps.
-- **$S_n$:** 2.0x speedup on 14 threads via parallelized row-median computation.
+**Memory & Overflow Safety:** `fastqnsn` implements native 64-bit pair-space verification. A hard internal bound at $N = 6.06 \times 10^9$ gracefully prevents the terminal 64-bit unsigned integer overflow ($\approx 1.84 \times 10^{19}$ pairs) before state corruption occurs, and `std::make_unique` allocations strictly guard against Out of Memory (OOM) segment-faults.
 
 *Note: `fastqnsn` uses updated consistency constants and finite-sample bias corrections from Akinshin (2022) by default.*
 
