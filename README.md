@@ -6,7 +6,7 @@
 
 ## Key Features
 - **Hybrid Architecture:**
-  - **Micro-Scale ($N \le 3000$ for $Q_n$, $N \le 2000$ for $S_n$):** Ultra-fast $O(n^2)$ stack-allocated exact kernels. At $N=1000$, $Q_n$ evaluates in $\sim 0.13ms$ (bypassing Johnson-Mizoguchi overhead), natively outperforming `robustbase` by over 2x.
+  - **Micro-Scale ($N \le 1000$ for $Q_n$, $N \le 2000$ for $S_n$):** Ultra-fast $O(n^2)$ stack-allocated exact kernels. At $N=1000$, $Q_n$ evaluates in $\sim 0.13ms$ (bypassing Johnson-Mizoguchi overhead), natively outperforming `robustbase` by over 2x.
   - **Mid-Scale ($N < 10000$):** Single-threaded $O(n \log n)$ sweeping algorithms.
   - **Macro-Scale ($N \ge 10000$):** Parallelized counting and refinement via **RcppParallel (Intel TBB)**.
 - **Floyd-Rivest Selection:** Replaces `std::nth_element` throughout, achieving ~30% fewer comparisons.
