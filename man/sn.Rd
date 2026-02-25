@@ -23,8 +23,8 @@ The Sn estimator is defined as:
 \deqn{S_n = c \cdot \text{lomed}_i \left\{ \text{himed}_j |x_i - x_j| \right\}}{Sn = c * lomed_i { himed_j |x_i - x_j| }}
 This implementation uses a fast hybrid architecture:
 \itemize{
-  \item For sample sizes n <= 8192, a high-speed deterministic C++ kernel is used.
-  \item For larger samples (n > 8192), a multi-threaded algorithm via RcppParallel is used.
+  \item For sample sizes n <= 4096, a high-speed deterministic C++ kernel is used.
+  \item For larger samples (n > 4096), a multi-threaded algorithm via RcppParallel is used.
   \item Optimized sorting: Uses Boost Spreadsort for small/medium samples and TBB parallel sort for large samples.
 }
 It incorporates modern consistency constants and finite-sample bias correction factors

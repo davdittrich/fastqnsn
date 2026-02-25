@@ -185,7 +185,7 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
 
   SnWorker<T> worker(sorted_x, n, inner_medians);
 
-  if (n > 8192)
+  if (n > 4096)
     parallelFor(0, n, worker, 2048);
   else
     worker(0, n);
@@ -424,21 +424,21 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
         whimed_cpp(work, iweight, m, static_cast<int64_t>((nR - nL) / 2));
 
     QnCountWorker<T> countWorker(sorted_x, n, trial);
-    if (n > 8192)
+    if (n > 4096)
       parallelReduce(1, n, countWorker, 2048);
     else
       countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, true, right);
-      if (n > 8192)
+      if (n > 4096)
         parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, false, left);
-      if (n > 8192)
+      if (n > 4096)
         parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);

@@ -7,8 +7,8 @@
 ## Key Features
 - **Hybrid Architecture:**
   - **Micro-Scale ($N \le 2048$ for $Q_n$ and $S_n$):** Ultra-fast $O(n^2)$ exact kernels. At $N=2048$, $Q_n$ evaluates in $\sim 0.35ms$ (bypassing Johnson-Mizoguchi overhead completely), performing nearly 3x faster than traditional algorithmic logic.
-  - **Mid-Scale ($N < 8192$):** Single-threaded $O(n \log n)$ sweeping algorithms.
-  - **Macro-Scale ($N \ge 8192$):** Parallelized counting and refinement via **RcppParallel (Intel TBB)**.
+  - **Mid-Scale ($N < 4096$):** Single-threaded $O(n \log n)$ sweeping algorithms.
+  - **Macro-Scale ($N \ge 4096$):** Parallelized counting and refinement via **RcppParallel (Intel TBB)**.
 - **Floyd-Rivest Selection:** Replaces `std::nth_element` throughout, achieving ~30% fewer comparisons.
 - **Arena Memory Allocation:** Single contiguous allocation for all working arrays in both $Q_n$ and $S_n$.
 - **Advanced Sorting:** Boost Spreadsort for medium $n$, TBB parallel sort for large $n$.
