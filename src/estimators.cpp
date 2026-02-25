@@ -126,8 +126,8 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
     Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
                "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= 2000) {
-    T sorted_x[2000];
+  if (n <= 2048) {
+    T sorted_x[2048];
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
         if (!std::isfinite(x_ptr[i]))
@@ -137,7 +137,7 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
     }
     fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
-    T inner_medians[2000];
+    T inner_medians[2048];
     int32_t h = static_cast<int32_t>(n / 2);
     int32_t L = 0;
     for (int32_t i = 0; i < static_cast<int32_t>(n); ++i) {
@@ -185,7 +185,7 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
 
   SnWorker<T> worker(sorted_x, n, inner_medians);
 
-  if (n > 10000)
+  if (n > 8192)
     parallelFor(0, n, worker, 2048);
   else
     worker(0, n);
@@ -338,7 +338,7 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
                "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= 1024) {
+  if (n <= 2048) {
     std::unique_ptr<T[]> sorted_x(new T[n]);
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
@@ -424,21 +424,21 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
         whimed_cpp(work, iweight, m, static_cast<int64_t>((nR - nL) / 2));
 
     QnCountWorker<T> countWorker(sorted_x, n, trial);
-    if (n > 10000)
+    if (n > 8192)
       parallelReduce(1, n, countWorker, 2048);
     else
       countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, true, right);
-      if (n > 10000)
+      if (n > 8192)
         parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, false, left);
-      if (n > 10000)
+      if (n > 8192)
         parallelFor(1, n, refineWorker, 2048);
       else
         refineWorker(1, n);

@@ -68,8 +68,8 @@ sn <- function(x, na.rm = FALSE) {
 #' \deqn{Q_n = d \cdot \{ |x_i - x_j| ; i < j \}_{(k)}}{Qn = d * {|x_i - x_j| ; i < j}(k)}
 #' This implementation uses a fast hybrid architecture:
 #' \itemize{
-#'   \item For sample sizes n <= 3000, an optimized deterministic C++ kernel is used.
-#'   \item For larger samples (n > 3000), a multi-threaded implementation using the Johnson-Mizoguchi selection algorithm.
+#'   \item For sample sizes n <= 2048, an optimized deterministic C++ kernel is used.
+#'   \item For larger samples (n > 2048), a multi-threaded implementation using the Johnson-Mizoguchi selection algorithm.
 #'   \item Optimized sorting: Uses Boost Spreadsort for small/medium samples and TBB parallel sort for large samples.
 #' }
 #' It corrects the legacy typo in consistency constants (legacy 2.2219 vs modern 2.2191)
