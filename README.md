@@ -36,9 +36,9 @@ scale_qn <- qn(x)
 
 `fastqnsn` is significantly faster than `robustbase` across all sample sizes.
 
-![Density Scaling Performance](man/figures/benchmark_01_n_scaling.png)
+![Density Scaling Performance](man/figures/figure_01_n_scaling.png)
 
-![Strong Scaling Performance](man/figures/benchmark_02_strong_scaling.png)
+![Strong Scaling Performance](man/figures/figure_02_strong_scaling.png)
 
 ### Extreme Scale Synthesis (The $10^8$ Frontier)
 
