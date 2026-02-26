@@ -1,3 +1,24 @@
 CXX_STD = CXX17
-PKG_CXXFLAGS = -DSPREADSORT_INT_THRESHOLD=2048
 
+# Cache-aware threshold detection (used by thresholds.h)
+# Detects L2 cache size at package install time. Falls back to 4MB.
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+  # Apple Silicon: use efficiency-core L2 (conservative choice, since macOS
+  # may schedule TBB worker threads on E-cores)
+  FASTQNSN_L2 := $(shell sysctl -n hw.perflevel1.l2cachesize 2>/dev/null \
+                  || sysctl -n hw.l2cachesize 2>/dev/null \
+                  || echo 4194304)
+  FASTQNSN_CL := $(shell sysctl -n hw.cachelinesize 2>/dev/null || echo 128)
+else ifeq ($(UNAME_S),Linux)
+  FASTQNSN_L2 := $(shell getconf LEVEL2_CACHE_SIZE 2>/dev/null || echo 4194304)
+  FASTQNSN_CL := $(shell getconf LEVEL1_DCACHE_LINESIZE 2>/dev/null || echo 64)
+else
+  # Windows and other: conservative defaults
+  FASTQNSN_L2 := 4194304
+  FASTQNSN_CL := 64
+endif
+
+PKG_CXXFLAGS = -DFASTQNSN_L2_CACHE_BYTES=$(FASTQNSN_L2) \
+               -DFASTQNSN_CACHE_LINE_BYTES=$(FASTQNSN_CL)

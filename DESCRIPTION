@@ -1,7 +1,7 @@
 Package: fastqnsn
 Type: Package
 Title: Fast and Optimized Qn and Sn Robust Scale Estimators
-Version: 1.0.4
+Version: 1.1.0
 Authors@R: 
     person("Dennis Alexis Valin", "Dittrich",
            role = c("aut", "cre"),
@@ -9,10 +9,11 @@ Authors@R:
            comment = c(ORCID = "0000-0002-4438-8276"))
 Description: High-performance, multi-threaded implementation of Rousseeuw-Croux
     Qn and Sn robust scale estimators. Re-engineered utilizing C++ arena memory
-    allocation, Floyd-Rivest subset selection, and explicit 64-bit boundaries to
-    resolve legacy integer overflows. Safely calculates exact scales on massive 
-    Big Data sequences up to N=10^8 on standard architectures while delivering a 
-    consistent 5x to 15x real-world speedup over legacy implementations.
+    allocation, Floyd-Rivest subset selection, cache-aware algorithm dispatch, and
+    explicit 64-bit boundaries to resolve legacy integer overflows. Safely calculates
+    exact scales on massive Big Data sequences up to N=10^8 on standard architectures
+    while delivering 2x to 14x real-world speedup over robustbase across all sample
+    sizes from N=10 to N=10^6.
 License: MIT
 Encoding: UTF-8
 LazyData: true
