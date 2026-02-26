@@ -110,7 +110,7 @@ template <typename T> struct SnWorker : public Worker {
       while (L < L_max) {
         T next = std::max(sorted_x[i] - sorted_x[L + 1],
                           sorted_x[L + 1 + h] - sorted_x[i]);
-        if (candidate <= next)
+        if (candidate < next)
           break;
         L++;
         candidate = next;
@@ -151,7 +151,7 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
       while (L < L_max) {
         T next = std::max(sorted_x[i] - sorted_x[L + 1],
                           sorted_x[L + 1 + h] - sorted_x[i]);
-        if (candidate <= next)
+        if (candidate < next)
           break;
         L++;
         candidate = next;
@@ -426,21 +426,21 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
 
     QnCountWorker<T> countWorker(sorted_x, n, trial);
     if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-      parallelReduce(1, n, countWorker, 2048);
+      parallelReduce(1, n, countWorker, 1024);
     else
       countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, true, right);
       if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-        parallelFor(1, n, refineWorker, 2048);
+        parallelFor(1, n, refineWorker, 1024);
       else
         refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, false, left);
       if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-        parallelFor(1, n, refineWorker, 2048);
+        parallelFor(1, n, refineWorker, 1024);
       else
         refineWorker(1, n);
       nL = countWorker.sumQ;
