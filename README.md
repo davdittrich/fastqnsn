@@ -54,19 +54,19 @@ Measured on local hardware (detected L2: 512 KB per core).
 
 | Estimator | Min Speedup | Median Speedup | Max Speedup |    At $N$    |
 |:---------:|:-----------:|:--------------:|:-----------:|:------------:|
-|   $S_n$   |  **2.10x**  |   **4.25x**    |  **9.56x**  |  2,097,152   |
-|   $Q_n$   |  **1.45x**  |   **4.05x**    |  **6.03x**  |      10      |
+|   $S_n$   |  **2.09x**  |   **4.35x**    |  **6.55x**  |  1,000,000   |
+|   $Q_n$   |  **1.70x**  |   **3.89x**    |  **6.08x**  |      10      |
 
 ### Speedup at Key Sample Sizes (double precision)
 
 |    $N$    | $S_n$ Speedup | $Q_n$ Speedup | Performance Driver       |
 |----------:|:-------------:|:-------------:|:-------------------------|
-|        10 |     2.75x     |     6.03x     | Local Config Caching     |
-|        64 |     2.57x     |     3.80x     | **Stack Fast-Path** (L1d)|
-|       128 |     2.53x     |     1.88x     | **Stack Fast-Path** (L1d)|
-|     1,024 |     2.10x     |     1.70x     | Optimized Sort Threshold |
-|    16,384 |     4.87x     |     3.78x     | HW-Aware Parallelism     |
-| 1,048,576 |     6.51x     |     4.90x     | TBB Parallel Selection   |
+|        10 |     2.74x     |     6.08x     | Local Config Caching     |
+|        64 |     2.53x     |     3.84x     | **Stack Fast-Path** (L1d)|
+|       128 |     2.50x     |     1.91x     | **Stack Fast-Path** (L1d)|
+|     1,024 |     2.09x     |     1.70x     | Optimized Sort Threshold |
+|    16,384 |     4.98x     |     3.86x     | HW-Aware Parallelism     |
+| 1,000,000 |     6.55x     |     4.48x     | TBB Parallel Selection   |
 
 ### Extreme Scale ($10^8$ Frontier)
 
