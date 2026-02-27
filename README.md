@@ -37,13 +37,9 @@ scale_qn <- qn(x)
 
 ## Benchmarks
 
-Validated across 61 sample sizes from $N=10$ to $N=1{,}000{,}000$, both $S_n$ and $Q_n$ estimators, on double and integer data. `fastqnsn` is faster than `robustbase` at **every** sample size tested (30 iterations per measurement, `microbenchmark`).
+Definitive performance validation across 42 sample sizes from $N=10$ to $N=10^8$. `fastqnsn` delivers optimized, hardware-aware performance that is consistently faster than `robustbase` at every scale.
 
-### Speedup over robustbase
-
-![Speedup over robustbase](man/figures/validation_speedup.png)
-
-### Definitive Absolute Timing and Speedup
+### Absolute Timing and Speedup (v1.1.0)
 
 ![Absolute Timing](man/figures/definitive_timing.png)
 ![Speedup over robustbase](man/figures/definitive_speedup.png)
