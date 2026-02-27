@@ -20,5 +20,15 @@ else
   FASTQNSN_CL := 64
 endif
 
-PKG_CXXFLAGS = -DFASTQNSN_L2_CACHE_BYTES=$(FASTQNSN_L2) \
+PKG_CXXFLAGS = -O3 -march=native \
+               -DFASTQNSN_L2_CACHE_BYTES=$(FASTQNSN_L2) \
                -DFASTQNSN_CACHE_LINE_BYTES=$(FASTQNSN_CL)
+
+# Default to direct TBB for maximum performance
+ifeq ($(USE_RCPP_PARALLEL), 1)
+  # Fallback to RcppParallel
+  PKG_LIBS += $(shell Rscript -e "RcppParallel::LdFlags()")
+else
+  PKG_CXXFLAGS += -DUSE_DIRECT_TBB
+  PKG_LIBS += -ltbb
+endif

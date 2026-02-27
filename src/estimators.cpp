@@ -1,50 +1,138 @@
+#pragma GCC optimize("O3")
+
 #include <Rcpp.h>
 // [[Rcpp::depends(RcppParallel)]]
 // [[Rcpp::depends(BH)]]
 #include "constants.h"
-#include "thresholds.h"
 #include "sort_utils.h"
+#include "thresholds.h"
+
+// Dynamic Optimization Headers
+#include "Dispatcher.h"
+#include "RuntimeConfig.h"
+
+// --- Fast Path Constants ---
+#define QN_STACK_LIMIT 128
+#define QN_STACK_PAIRS 8128 // (128 * 127) / 2
+
+#ifdef USE_DIRECT_TBB
+// Using native oneAPI TBB directly for maximum performance
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+namespace fastqnsn_parallel {
+struct Worker {};
+using Split = tbb::split;
+} // namespace fastqnsn_parallel
+#else
+// Fallback to RcppParallel
 #include <RcppParallel.h>
+namespace fastqnsn_parallel {
+using namespace RcppParallel;
+}
+#endif
 #include <algorithm>
 #include <cmath>
 #include <memory>
 #include <new>
 #include <type_traits>
 
+#ifdef USE_DIRECT_TBB
+template <typename Worker>
+inline void fast_parallel_for(size_t begin, size_t end, Worker &worker,
+                              size_t grainSize) {
+  tbb::parallel_for(tbb::blocked_range<size_t>(begin, end, grainSize), worker);
+}
+
+template <typename Worker>
+inline void fast_parallel_reduce(size_t begin, size_t end, Worker &worker,
+                                 size_t grainSize) {
+  tbb::parallel_reduce(tbb::blocked_range<size_t>(begin, end, grainSize),
+                       worker);
+}
+#else
+template <typename Worker>
+inline void fast_parallel_for(size_t begin, size_t end, Worker &worker,
+                              size_t grainSize) {
+  RcppParallel::parallelFor(begin, end, worker, grainSize);
+}
+template <typename Worker>
+inline void fast_parallel_reduce(size_t begin, size_t end, Worker &worker,
+                                 size_t grainSize) {
+  RcppParallel::parallelReduce(begin, end, worker, grainSize);
+}
+#endif
+
 using namespace Rcpp;
+#ifndef USE_DIRECT_TBB
 using namespace RcppParallel;
+#endif
 
 // --- FLOYD-RIVEST SELECTION ---
-// Faster than std::nth_element for average cases (~30% fewer comparisons)
+// Faster than std::nth_element for large cases (~30% fewer comparisons)
 template <typename Iter>
-void floyd_rivest_select(Iter begin, Iter nth, Iter end) {
-  using T = typename std::iterator_traits<Iter>::value_type;
-  while (end - begin > 5) {
-    auto n = end - begin;
-    auto k = nth - begin;
-    double nr = (double)n;
-    double z = std::log(nr);
-    double s = 0.5 * std::exp(2.0 * z / 3.0);
-    double sd = 0.5 * std::sqrt(z * s * (nr - s) / nr) *
-                (2.0 * k - n + 1 < 0 ? -1.0 : 1.0);
-    auto newl = begin + (std::max)((decltype(k))0,
-                                   (decltype(k))(k - (double)k * s / nr + sd));
-    auto newr = begin + (std::min)((decltype(k))(n - 1),
-                                   (decltype(k))(k + (nr - k) * s / nr + sd));
-    floyd_rivest_select(begin + (newl - begin), nth,
-                        begin + (newr - begin) + 1);
-    begin = newl;
-    end = newr + 1;
+void floyd_rivest_select(Iter left, Iter k, Iter right_in) {
+  size_t n = std::distance(left, right_in);
+  if (n < 600) {
+    std::nth_element(left, k, right_in);
+    return;
   }
-  // Insertion sort for small partitions
-  for (auto i = begin + 1; i < end; ++i) {
-    T val = std::move(*i);
-    auto j = i;
-    while (j > begin && *(j - 1) > val) {
-      *j = std::move(*(j - 1));
-      --j;
+  using T = typename std::iterator_traits<Iter>::value_type;
+  Iter right = right_in - 1;
+
+  while (right > left) {
+    if (right - left > 600) {
+      size_t n = static_cast<size_t>(right - left + 1);
+      size_t i = static_cast<size_t>(k - left + 1);
+      double z = std::log(static_cast<double>(n));
+      double s = 0.5 * std::exp(2.0 * z / 3.0);
+      double sd =
+          0.5 *
+          std::sqrt(z * s * (static_cast<double>(n) - s) /
+                    static_cast<double>(n)) *
+          (static_cast<double>(i) - static_cast<double>(n) / 2.0 >= 0 ? 1.0
+                                                                      : -1.0);
+      Iter new_left =
+          (std::max)(left,
+                     k - static_cast<long long>(static_cast<double>(i) * s /
+                                                    static_cast<double>(n) +
+                                                sd));
+      Iter new_right =
+          (std::min)(right,
+                     k + static_cast<long long>(static_cast<double>(n - i) * s /
+                                                    static_cast<double>(n) +
+                                                sd));
+      floyd_rivest_select(new_left, k, new_right + 1);
     }
-    *j = std::move(val);
+
+    T t = *k;
+    Iter i = left;
+    Iter j = right;
+    std::swap(*left, *k);
+    if (*right > t)
+      std::swap(*left, *right);
+
+    while (i < j) {
+      std::swap(*i, *j);
+      i++;
+      j--;
+      while (*i < t)
+        i++;
+      while (*j > t)
+        j--;
+    }
+
+    if (*left == t)
+      std::swap(*left, *j);
+    else {
+      j++;
+      std::swap(*j, *right);
+    }
+
+    if (j <= k)
+      left = j + 1;
+    if (k <= j)
+      right = j - 1;
   }
 }
 
@@ -60,13 +148,19 @@ template <typename T> inline double lowmedian_ptr(T *arr, size_t n) {
 
 // --- SN ESTIMATOR WORKER ---
 
-template <typename T> struct SnWorker : public Worker {
+template <typename T> struct SnWorker : public fastqnsn_parallel::Worker {
   const T *sorted_x;
   size_t n;
   T *results;
 
   SnWorker(const T *sorted_x, size_t n, T *results)
       : sorted_x(sorted_x), n(n), results(results) {}
+
+#ifdef USE_DIRECT_TBB
+  void operator()(const tbb::blocked_range<size_t> &r) const {
+    const_cast<SnWorker *>(this)->operator()(r.begin(), r.end());
+  }
+#endif
 
   void operator()(size_t begin, size_t end) {
     if (begin >= end)
@@ -127,8 +221,10 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
     Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
                "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= fastqnsn::SN_STACK_THRESHOLD) {
-    T sorted_x[fastqnsn::SN_STACK_THRESHOLD];
+  auto &config = fastqnsn_dynamic::RuntimeConfig::get();
+  if (n <= config.sn_stack_threshold) {
+    T sorted_x[2048]; // Max stack size from RuntimeConfig (must be constexpr
+                      // for array)
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
         if (!std::isfinite(x_ptr[i]))
@@ -138,7 +234,7 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
     }
     fastqnsn::optimized_sort(sorted_x, sorted_x + n);
 
-    T inner_medians[fastqnsn::SN_STACK_THRESHOLD];
+    T inner_medians[2048];
     int32_t h = static_cast<int32_t>(n / 2);
     int32_t L = 0;
     for (int32_t i = 0; i < static_cast<int32_t>(n); ++i) {
@@ -186,8 +282,8 @@ template <typename T> double C_sn_impl(const T *x_ptr, size_t n) {
 
   SnWorker<T> worker(sorted_x, n, inner_medians);
 
-  if (n > fastqnsn::SN_PARALLEL_THRESHOLD)
-    parallelFor(0, n, worker, 2048);
+  if (n > config.sn_parallel_threshold)
+    fast_parallel_for(0, n, worker, 2048);
   else
     worker(0, n);
 
@@ -249,7 +345,7 @@ inline T whimed_cpp(T *a, int32_t *iw, size_t n, int64_t target) {
   return a[l];
 }
 
-template <typename T> struct QnCountWorker : public Worker {
+template <typename T> struct QnCountWorker : public fastqnsn_parallel::Worker {
   const T *x;
   size_t n;
   double trial;
@@ -258,8 +354,14 @@ template <typename T> struct QnCountWorker : public Worker {
 
   QnCountWorker(const T *x, size_t n, double trial)
       : x(x), n(n), trial(trial) {}
-  QnCountWorker(const QnCountWorker &other, Split)
+  QnCountWorker(const QnCountWorker &other, fastqnsn_parallel::Split)
       : x(other.x), n(other.n), trial(other.trial) {}
+
+#ifdef USE_DIRECT_TBB
+  void operator()(const tbb::blocked_range<size_t> &r) {
+    this->operator()(r.begin(), r.end());
+  }
+#endif
 
   void operator()(size_t begin, size_t end) {
     if (begin >= end)
@@ -290,7 +392,7 @@ template <typename T> struct QnCountWorker : public Worker {
   }
 };
 
-template <typename T> struct QnRefineWorker : public Worker {
+template <typename T> struct QnRefineWorker : public fastqnsn_parallel::Worker {
   const T *x;
   size_t n;
   double trial;
@@ -300,6 +402,12 @@ template <typename T> struct QnRefineWorker : public Worker {
   QnRefineWorker(const T *x, size_t n, double trial, bool is_sumP,
                  int32_t *bounds)
       : x(x), n(n), trial(trial), is_sumP(is_sumP), bounds(bounds) {}
+
+#ifdef USE_DIRECT_TBB
+  void operator()(const tbb::blocked_range<size_t> &r) const {
+    const_cast<QnRefineWorker *>(this)->operator()(r.begin(), r.end());
+  }
+#endif
 
   void operator()(size_t begin, size_t end) {
     if (begin >= end)
@@ -339,7 +447,29 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
     Rcpp::stop("fastqnsn Error: sample size n > 6.06 * 10^9 natively overflows "
                "64-bit pair boundaries. 128-bit architecture required.");
 
-  if (n <= fastqnsn::QN_EXACT_THRESHOLD) {
+  auto &config = fastqnsn_dynamic::RuntimeConfig::get();
+  if (n <= config.qn_exact_threshold) {
+    if (n <= QN_STACK_LIMIT) {
+      T sorted_x[QN_STACK_LIMIT];
+      double diffs[QN_STACK_PAIRS];
+      for (size_t i = 0; i < n; i++) {
+        if constexpr (std::is_floating_point_v<T>) {
+          if (!std::isfinite(x_ptr[i]))
+            return NA_REAL;
+        }
+        sorted_x[i] = x_ptr[i];
+      }
+      std::sort(sorted_x, sorted_x + n);
+
+      fastqnsn_dynamic::Dispatcher::qn_brute_force(sorted_x, n, diffs);
+
+      size_t num_pairs = n * (n - 1) / 2;
+      size_t h = n / 2 + 1;
+      size_t k_target = h * (h - 1) / 2;
+      std::nth_element(diffs, diffs + k_target - 1, diffs + num_pairs);
+      return diffs[k_target - 1] * CONST_QN * get_qn_factor(n);
+    }
+
     std::unique_ptr<T[]> sorted_x(new T[n]);
     for (size_t i = 0; i < n; i++) {
       if constexpr (std::is_floating_point_v<T>) {
@@ -352,16 +482,15 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
 
     size_t num_pairs = n * (n - 1) / 2;
     std::unique_ptr<double[]> diffs(new double[num_pairs]);
-    size_t k_idx = 0;
-    for (size_t i = 1; i < n; ++i) {
-      for (size_t j = 0; j < i; ++j) {
-        diffs[k_idx++] = (double)sorted_x[i] - (double)sorted_x[j];
-      }
-    }
+
+    // Use dynamic dispatcher for brute-force kernel
+    fastqnsn_dynamic::Dispatcher::qn_brute_force(sorted_x.get(), n,
+                                                 diffs.get());
+
     size_t h = n / 2 + 1;
     size_t k_target = h * (h - 1) / 2;
-    floyd_rivest_select(diffs.get(), diffs.get() + k_target - 1,
-                        diffs.get() + num_pairs);
+    std::nth_element(diffs.get(), diffs.get() + k_target - 1,
+                     diffs.get() + num_pairs);
     double raw = diffs[k_target - 1];
     return raw * CONST_QN * get_qn_factor(n);
   }
@@ -372,7 +501,7 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
       n * sizeof(T) + n * sizeof(double) + 3 * n * sizeof(int32_t);
   std::unique_ptr<char[]> arena;
   try {
-    arena = std::make_unique<char[]>(arena_bytes);
+    arena.reset(new char[arena_bytes]);
   } catch (const std::bad_alloc &e) {
     Rcpp::stop(
         "fastqnsn Out of Memory: failed to allocate %zu bytes for Qn arena.",
@@ -415,7 +544,7 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
       if (left[i] <= right[i]) {
         int32_t w = right[i] - left[i] + 1;
         int32_t jj = left[i] + w / 2;
-        work[m] = (float)((double)sorted_x[i] - (double)sorted_x[i - jj]);
+        work[m] = (double)sorted_x[i] - (double)sorted_x[i - jj];
         iweight[m] = w;
         m += 1;
       }
@@ -425,22 +554,22 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
         whimed_cpp(work, iweight, m, static_cast<int64_t>((nR - nL) / 2));
 
     QnCountWorker<T> countWorker(sorted_x, n, trial);
-    if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-      parallelReduce(1, n, countWorker, 1024);
+    if (n > config.qn_parallel_threshold)
+      fast_parallel_reduce(1, n, countWorker, 1024);
     else
       countWorker(1, n);
 
     if (k_target <= countWorker.sumP) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, true, right);
-      if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-        parallelFor(1, n, refineWorker, 1024);
+      if (n > config.qn_parallel_threshold)
+        fast_parallel_for(1, n, refineWorker, 1024);
       else
         refineWorker(1, n);
       nR = countWorker.sumP;
     } else if (k_target > countWorker.sumQ) {
       QnRefineWorker<T> refineWorker(sorted_x, n, trial, false, left);
-      if (n > fastqnsn::QN_PARALLEL_THRESHOLD)
-        parallelFor(1, n, refineWorker, 1024);
+      if (n > config.qn_parallel_threshold)
+        fast_parallel_for(1, n, refineWorker, 1024);
       else
         refineWorker(1, n);
       nL = countWorker.sumQ;
@@ -451,7 +580,7 @@ template <typename T> double C_qn_impl(const T *x_ptr, size_t n) {
 
   std::unique_ptr<double[]> final_diffs;
   try {
-    final_diffs = std::make_unique<double[]>(nR - nL);
+    final_diffs.reset(new double[nR - nL]);
   } catch (const std::bad_alloc &e) {
     Rcpp::stop("fastqnsn Out of Memory: failed to allocate %zu bytes for final "
                "Qn diffs.",

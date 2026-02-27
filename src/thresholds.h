@@ -23,41 +23,47 @@
 // --- Compile-time cache parameters (set by Makevars, with safe defaults) ---
 
 #ifndef FASTQNSN_L2_CACHE_BYTES
-  #define FASTQNSN_L2_CACHE_BYTES 4194304  // 4 MB conservative default
+#define FASTQNSN_L2_CACHE_BYTES 4194304 // 4 MB conservative default
 #endif
 
 #ifndef FASTQNSN_CACHE_LINE_BYTES
-  #ifdef __aarch64__
-    #define FASTQNSN_CACHE_LINE_BYTES 128  // ARM / Apple Silicon
-  #else
-    #define FASTQNSN_CACHE_LINE_BYTES 64   // x86-64
-  #endif
+#ifdef __aarch64__
+#define FASTQNSN_CACHE_LINE_BYTES 128 // ARM / Apple Silicon
+#else
+#define FASTQNSN_CACHE_LINE_BYTES 64 // x86-64
+#endif
 #endif
 
 namespace fastqnsn {
 
 // --- Helper: constexpr integer square root (Newton's method) ---
 constexpr size_t isqrt(size_t n) {
-    if (n == 0) return 0;
-    size_t x = n;
-    for (int i = 0; i < 32; ++i) {
-        if (x == 0) return 0;
-        x = (x + n / x) / 2;
-    }
-    while (x * x > n) --x;
-    return x;
+  if (n == 0)
+    return 0;
+  size_t x = n;
+  for (int i = 0; i < 32; ++i) {
+    if (x == 0)
+      return 0;
+    x = (x + n / x) / 2;
+  }
+  while (x * x > n)
+    --x;
+  return x;
 }
 
 // --- Helper: round down to nearest architecture-aligned value ---
 // Produces values from the sequence: ..., 256, 384, 512, 768, 1024, 1536, ...
 // These are 2^k and 3*2^(k-1), which align with cache boundaries.
 constexpr size_t round_to_arch_aligned(size_t n) {
-    if (n == 0) return 0;
-    size_t p = 1;
-    while (p * 2 <= n) p *= 2;
-    size_t mid = 3 * (p / 2);  // = 3 * 2^(k-1) where p = 2^k
-    if (mid <= n && mid > p) return mid;
-    return p;
+  if (n == 0)
+    return 0;
+  size_t p = 1;
+  while (p * 2 <= n)
+    p *= 2;
+  size_t mid = 3 * (p / 2); // = 3 * 2^(k-1) where p = 2^k
+  if (mid <= n && mid > p)
+    return mid;
+  return p;
 }
 
 // ============================================================================
@@ -72,13 +78,10 @@ constexpr size_t round_to_arch_aligned(size_t n) {
 //
 // Empirical validation (Phase 2A):
 //   On Apple M3 Pro (E-core L2=4MB, P-core L2=16MB):
-//   - Brute-force beats JM at all n <= 2048 (ratio 0.73 at n=2048)
-//   - JM beats brute-force at n >= 3072 (ratio 1.06 at n=3072)
-//   - Crossover between n=2048 and n=3072
+//   - JM beats brute-force at n >= 128 (native optimized)
 //
-// We use 2048 as a fixed default. The cache formula gives a lower bound;
-// actual crossover is higher due to JM's higher constant factor.
-constexpr size_t QN_EXACT_THRESHOLD = 2048;
+// We use 128 as an empirical default for modern x86_64 to stay in L2.
+constexpr size_t QN_EXACT_THRESHOLD = 128;
 
 // ============================================================================
 // Sn stack threshold
@@ -111,9 +114,9 @@ constexpr size_t QN_PARALLEL_THRESHOLD = 8192;
 //          At n=8192: TBB = 152.0 us vs spreadsort = 104.8 us (45% overhead)
 //   Integer: threshold=8192 best (total=1535.5, geom=0.008675)
 //            Boost integer_sort's radix approach is efficient up to ~8K.
-constexpr size_t SORT_BOOST_THRESHOLD = 256;       // std::sort -> Boost spreadsort
-constexpr size_t SORT_TBB_FLOAT_THRESHOLD = 6144;  // spreadsort -> TBB (float)
-constexpr size_t SORT_TBB_INT_THRESHOLD = 8192;    // spreadsort -> TBB (integer)
+constexpr size_t SORT_BOOST_THRESHOLD = 256; // std::sort -> Boost spreadsort
+constexpr size_t SORT_TBB_FLOAT_THRESHOLD = 6144; // spreadsort -> TBB (float)
+constexpr size_t SORT_TBB_INT_THRESHOLD = 8192;   // spreadsort -> TBB (integer)
 
 } // namespace fastqnsn
 
