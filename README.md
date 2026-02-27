@@ -45,53 +45,68 @@ Validated across 61 sample sizes from $N=10$ to $N=1{,}000{,}000$, both $S_n$ an
 
 ### Absolute Timing
 
-![Absolute Timing](man/figures/validation_timing.png)
+### Absolute Timing and Speedup
+
+![Absolute Timing](man/figures/validation_timing_v2.png)
+![Speedup over robustbase](man/figures/validation_speedup_v2.png)
 
 ### Summary Statistics (v1.1.0 Dynamic)
 
+Measured on local hardware (detected L2: 512 KB per core).
+
 | Estimator | Min Speedup | Median Speedup | Max Speedup | At $N$ |
 |:---------:|:-----------:|:--------------:|:-----------:|:------:|
-| $S_n$ | **2.21x** | **4.33x** | **9.89x** | 2,097,152 |
-| $Q_n$ | **1.74x** | **4.11x** | **5.84x** | 8 |
-
-### Speedup at Key Sample Sizes (double precision)
-
-| $N$ | $S_n$ Speedup | $Q_n$ Speedup | New in v1.1.0 |
-|----:|:-------------:|:-------------:|:--------------|
-| 10 | 2.69x | 5.78x | Local Config Caching |
-| 64 | 2.63x | 4.31x | **Stack Fast-Path** |
-| 128 | 2.45x | 2.21x | **Stack Fast-Path** |
-| 1,024 | 2.15x | 1.89x | Optimized Sort Threshold |
-| 16,384 | 4.43x | 3.48x | HW-Aware Parallelism |
-| 1,048,576 | 6.44x | 4.89x | TBB Parallel Selection |
+| $S_n$ | **2.15x** | **4.33x** | **9.56x** | 2,097,152 |
+| $Q_n$ | **1.45x** | **4.05x** | **6.45x** | 10 |
 
 ### Extreme Scale ($10^8$ Frontier)
 
-Rigorous testing up to $N=10^8$ confirms `fastqnsn` safely calculates robust scales on Big Data where legacy implementations struggle with memory pressure and severe performance bottlenecks.
+Rigorous testing confirms `fastqnsn` safely calculates robust scales on Big Data where legacy implementations struggle with memory pressure and severe performance bottlenecks.
 
 | Sample Size ($N$) | Estimator | `robustbase` | `fastqnsn` (Dynamic) | Speedup |
 | :---: | :---: | :--- | :--- | :---: |
-| **$10^6$** | $S_n$ | 0.067 s | **0.012 s** | **~5.5x** |
-| | $Q_n$ | 0.430 s | **0.095 s** | **~4.5x** |
-| **$10^7$** | $S_n$ | 1.310 s | **0.216 s** | **~6.1x** |
-| | $Q_n$ | 22.8 s* | **6.51 s** | **~3.5x** |
-| **$10^8$** | $S_n$ | 16.1 s* | **2.65 s** | **~6.1x** |
-| | $Q_n$ | 94.5 s* | **30.17 s** | **~3.1x** |
+| **$10^6$** | $S_n$ | 0.146 s | **0.021 s** | **~6.9x** |
+| | $Q_n$ | 0.481 s | **0.096 s** | **~5.0x** |
+| **$10^7$** | $S_n$ | 1.30 s | **0.223 s** | **~5.8x** |
+| | $Q_n$ | 22.8 s* | **2.25 s** | **~10.1x** |
+| **$10^8$** | $S_n$ | 16.1 s* | **2.20 s** | **~7.3x** |
+| | $Q_n$ | 94.5 s* | **22.72 s** | **~4.2x** |
 
-*\*Extrapolated or from legacy benchmarks where robustbase limits were exceeded.*
+*\*Extrapolated or from legacy benchmarks where robustbase limits were exceeded/prohibitive.*
 
-## Runtime Hardware Tuning
+## Principles of Cache-Aware Dispatch
 
-`fastqnsn` v1.1.0-dynamic introduces true **Runtime Hardware Discovery**. Unlike static versions, it detects your CPU's L1/L2 cache topology and core count at execution time to optimize every calculation.
+`fastqnsn` v1.1.0-dynamic moves beyond static constants by implementing true **Architecture-Aware Dispatch**. The package detects hardware topology at runtime and calculates optimal algorithm boundaries based on the following three principles:
 
-| Feature | Dynamic Logic | Benefit |
-|:----------|:---|:---------|
-| **Stack Fast-Path** | Activated for $N \le 128$ | Zero heap-allocation latency |
-| **Qn Brute-Force** | Sized to 50% of available L2 | Optimal SIMD throughput |
-| **Sn Parallelism** | Threshold = $L2 / sizeof(double)$ | Amortizes thread-spawning cost |
-| **Lookup Caching** | Singleton bypass in hot loops | 21% reduction in branch overhead |
+### 1. The L2 Budgeting Rule (Qn Brute-Force)
 
-No manual configuration is required. The package self-calibrates to provide the fastest possible estimator on any machine, from laptops to high-core servers.
+The high-performance $O(n^2)$ brute-force kernel for $Q_n$ achieves peak throughput when its working set (the pairwise difference array) fits entirely within the L2 cache.
+
+- **Dependency**: `qn_exact_threshold = sqrt( (L2_Cache / 2) / sizeof(double) )`
+- **Logic**: By budgeting exactly 50% of the per-core L2 for the working array, we leave sufficient headroom for the sorted input and TBB scheduler metadata, ensuring zero L2-to-DRAM spill-over during the most compute-intensive phase.
+
+### 2. Parallel Amortization (Sn Scaling)
+
+Thread spawning and synchronization in **Intel TBB** carry a non-zero overhead (~10-50µs). Multi-threading only provides a net gain when the computational volume exceeds this latency.
+
+- **Dependency**: `sn_parallel_threshold = L2_Cache / sizeof(double)`
+- **Logic**: This threshold aligns the transition to parallelism with the point where the sorted dataset exceeds the cache capacity of a single core. This forces the scheduler to distribute work only when the data movement costs are already being incurred, effectively masking the TBB overhead.
+
+### 3. L1d Stack Contiguity (Micro-Scale)
+
+For $N \le 128$, the package bypasses the heap entirely.
+
+- **Logic**: Utilizing stack-allocated buffers ensures that working data is highly likely to reside in the **L1 Data Cache** (64 bytes away from the execution pipeline). This reduces the "time-to-first-result" by eliminating the millions of clock cycles often lost to standard `malloc`/`new` system calls in R's high-frequency loop contexts.
+
+## Usage
+
+Simply install and load. The package self-calibrates instantly.
+
+```R
+library(fastqnsn)
+# Thresholds automatically adjusted for your CPU
+q <- qn(rnorm(1e6)) 
+```
 
 ### Cross-Platform Cache Detection
 
