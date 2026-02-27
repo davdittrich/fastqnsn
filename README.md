@@ -117,7 +117,7 @@ For micro-scales ($N \le 128$), the package bypasses the heap manager entirely.
 
 ### 3. The Dispatch Layer (`src/Dispatcher.h`)
 
-Estimatox logic is routed through templated dispatchers that examine the `RuntimeConfig` before every call. This ensures that as you move from a laptop to a high-density server, `fastqnsn` automatically grows its brute-force windows and parallel greediness to match the available silicon.
+Estimator logic is routed through templated dispatchers that examine the `RuntimeConfig` before every call. This ensures that as you move from a laptop to a high-density server, `fastqnsn` automatically grows its brute-force windows and parallel greediness to match the available silicon.
 
 ## Usage
 
