@@ -54,19 +54,19 @@ Measured on local hardware (detected L2: 512 KB per core).
 
 | Estimator | Min Speedup | Median Speedup | Max Speedup |    At $N$    |
 |:---------:|:-----------:|:--------------:|:-----------:|:------------:|
-|   $S_n$   |  **2.09x**  |   **4.35x**    |  **6.55x**  |  1,000,000   |
-|   $Q_n$   |  **1.70x**  |   **3.89x**    |  **6.08x**  |      10      |
+|   $S_n$   |  **2.09x**  |   **4.35x**    |  **7.14x**  |  1,048,576   |
+|   $Q_n$   |  **1.68x**  |   **3.46x**    |  **6.16x**  |  4,194,304   |
 
 ### Speedup at Key Sample Sizes (double precision)
 
 |    $N$    | $S_n$ Speedup | $Q_n$ Speedup | Performance Driver       |
 |----------:|:-------------:|:-------------:|:-------------------------|
-|        10 |     2.74x     |     6.08x     | Local Config Caching     |
-|        64 |     2.53x     |     3.84x     | **Stack Fast-Path** (L1d)|
-|       128 |     2.50x     |     1.91x     | **Stack Fast-Path** (L1d)|
-|     1,024 |     2.09x     |     1.70x     | Optimized Sort Threshold |
-|    16,384 |     4.98x     |     3.86x     | HW-Aware Parallelism     |
-| 1,000,000 |     6.55x     |     4.48x     | TBB Parallel Selection   |
+|        10 |     2.68x     |     5.72x     | Local Config Caching     |
+|        64 |     2.52x     |     3.34x     | **Stack Fast-Path** (L1d)|
+|       128 |     2.57x     |     2.32x     | **Stack Fast-Path** (L1d)|
+|     1,024 |     2.16x     |     1.69x     | Optimized Sort Threshold |
+|    16,384 |     4.67x     |     3.46x     | HW-Aware Parallelism     |
+| 1,048,576 |     7.14x     |     5.00x     | TBB Parallel Selection   |
 
 ### Extreme Scale ($10^8$ Frontier)
 
@@ -74,14 +74,14 @@ Rigorous testing confirms `fastqnsn` safely calculates robust scales on Big Data
 
 | Sample Size ($N$) | Estimator | `robustbase` | `fastqnsn` (Dynamic) |  Speedup  |
 |:-----------------:|:---------:|:------------:|:--------------------:|:---------:|
-|    **$10^6$**     |   $S_n$   |   0.139 s    |     **0.024 s**      | **~5.8x** |
-|                   |   $Q_n$   |   0.889 s    |     **0.225 s**      | **~4.0x** |
-|    **$10^7$**     |   $S_n$   |   1.870 s    |     **0.274 s**      | **~6.8x** |
-|                   |   $Q_n$   |   10.27 s    |     **2.712 s**      | **~3.8x** |
-|    **$10^8$**     |   $S_n$   |   16.54 s    |     **3.081 s**      | **~5.4x** |
-|                   |   $Q_n$   |   94.5 s*    |     **22.719 s**     | **~4.2x** |
+|    **$10^6$**     |   $S_n$   |   0.131 s    |     **0.020 s**      | **~6.4x** |
+|                   |   $Q_n$   |   0.865 s    |     **0.179 s**      | **~4.8x** |
+|    **$10^7$**     |   $S_n$   |   1.383 s    |     **0.268 s**      | **~5.1x** |
+|                   |   $Q_n$   |   9.663 s    |     **2.448 s**      | **~3.9x** |
+|    **$10^8$**     |   $S_n$   |   17.292 s   |     **2.849 s**      | **~6.1x** |
+|                   |   $Q_n$   |   92.163 s   |     **30.509 s**     | **~3.0x** |
 
-*\*Extrapolated/Legacy baseline for robustbase Qn at 10^8.*
+*\*All values are real measurements from the definitive high-fidelity benchmark.*
 
 ## Architectural Deep-Dive: Hardware-Aware Dynamic Tuning
 
